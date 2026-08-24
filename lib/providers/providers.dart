@@ -13,11 +13,20 @@ import '../data/repositories/recurring_repo.dart';
 import '../data/repositories/settings_repo.dart';
 import '../data/repositories/transactions_repo.dart';
 import '../services/alert_service.dart';
+import '../services/backup_service.dart';
 
 // ---------- Repositories ----------
 
 final databaseProvider =
     Provider<AppDatabase>((ref) => throw UnimplementedError('override in main'));
+
+final encryptionKeyProvider = Provider<String>(
+    (ref) => throw UnimplementedError('override in main'));
+
+final backupServiceProvider = Provider((ref) => BackupService(
+    ref.watch(databaseProvider),
+    ref.watch(settingsRepoProvider),
+    ref.watch(encryptionKeyProvider)));
 
 final logsRepoProvider =
     Provider((ref) => LogsRepo(ref.watch(databaseProvider)));
@@ -137,4 +146,5 @@ final recurringListProvider = StreamProvider<List<RecurringTemplate>>(
 
 final activityLogProvider = StreamProvider<List<ActivityLog>>(
     (ref) => ref.watch(logsRepoProvider).watchRecent());
+
 

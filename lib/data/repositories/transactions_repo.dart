@@ -23,8 +23,9 @@ class TransactionsRepo {
 
   // ---------- Aggregates ----------
 
-  /// Balance = income + net saved − expenses (user-defined formula:
-  /// money in savings still counts towards total balance).
+  /// Balance = income − expenses (all time). Savings deposits/withdrawals
+  /// are internal allocations of the same money and do not change total
+  /// balance — the savings pot is reported separately via [watchSavingsPot].
   Stream<int> watchBalance() => _watchAll().map(
         (rows) => rows.fold<int>(
             0,
@@ -32,9 +33,8 @@ class TransactionsRepo {
                 s +
                 switch (t.type) {
                   TxType.income => t.amountMinor,
-                  TxType.savingsDeposit => t.amountMinor,
-                  TxType.savingsWithdrawal => -t.amountMinor,
                   TxType.expense => -t.amountMinor,
+                  _ => 0,
                 }),
       );
 
@@ -73,9 +73,8 @@ class TransactionsRepo {
               s +
               switch (t.type) {
                 TxType.income => t.amountMinor,
-                TxType.savingsDeposit => t.amountMinor,
-                TxType.savingsWithdrawal => -t.amountMinor,
                 TxType.expense => -t.amountMinor,
+                _ => 0,
               });
 
   Future<int> savingsPot() async => (await _db.select(_db.transactions).get())

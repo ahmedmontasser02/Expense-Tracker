@@ -1,6 +1,11 @@
+import 'dart:io';
+
+import 'package:file_selector/file_selector.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:path/path.dart' as p;
+import 'package:path_provider/path_provider.dart';
 
 import '../../core/format.dart';
 import '../../data/repositories/settings_repo.dart';
@@ -144,7 +149,30 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
               await _rescheduleDaily({...s, SettingsRepo.dailySummaryHour: '$h'});
             },
           ),
-          const           SectionHeader('Diagnostics'),
+          const           SectionHeader('Data & backups'),
+          SwitchListTile(
+            secondary: const Icon(Icons.backup_outlined),
+            title: const Text('Automatic daily backup'),
+            subtitle: Text(
+                'Keeps the last 7 backups on this device'
+                '${s[SettingsRepo.lastBackupKey] != null && s[SettingsRepo.lastBackupKey]!.isNotEmpty ? ' • last: ${_prettyLastBackup(s[SettingsRepo.lastBackupKey]!)}' : ''}'),
+            value: s[SettingsRepo.autoBackupKey] == 'true',
+            onChanged: (v) => _set(SettingsRepo.autoBackupKey, '$v'),
+          ),
+          ListTile(
+            leading: const Icon(Icons.cloud_sync_outlined),
+            title: const Text('Back up now'),
+            subtitle: const Text('Snapshot the database to device storage'),
+            onTap: () => _backupNow(context),
+          ),
+          ListTile(
+            leading: const Icon(Icons.restore_outlined),
+            title: const Text('Restore from backup'),
+            subtitle: const Text(
+                'Replaces current data — restarts the app when done'),
+            onTap: () => _restoreFlow(context),
+          ),
+          SectionHeader('Diagnostics'),
           ListTile(
             leading: const Icon(Icons.bug_report_outlined),
             title: const Text('Export diagnostic logs'),
@@ -175,6 +203,72 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   }
   Future<void> _set(String key, String value) =>
       ref.read(settingsRepoProvider).set(key, value);
+
+  String _prettyLastBackup(String iso) {
+    final d = DateTime.tryParse(iso);
+    return d == null ? iso : DateX.prettyDateTime(d);
+  }
+
+  Future<void> _backupNow(BuildContext context) async {
+    final messenger = ScaffoldMessenger.of(context);
+    try {
+      final file = await ref.read(backupServiceProvider).backupNow();
+      messenger.showSnackBar(SnackBar(
+          content: Text('Backup saved: ${p.basename(file.path)}')));
+    } catch (e) {
+      messenger.showSnackBar(SnackBar(content: Text('Backup failed: $e')));
+    }
+  }
+
+  Future<void> _restoreFlow(BuildContext context) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Restore from backup?'),
+        content: const Text(
+            'Your current data will be replaced with the backup contents. '
+            'A safety backup of the current state is made first. '
+            'The app restarts after restoring.'),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('Cancel')),
+          FilledButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              child: const Text('Choose file')),
+        ],
+      ),
+    );
+    if (confirmed != true || !context.mounted) return;
+
+    final messenger = ScaffoldMessenger.of(context);
+    final XFile? picked = await openFile();
+    if (picked == null) return;
+    try {
+      // Copy out of the provider cache into app storage first.
+      final tmpDir = await getTemporaryDirectory();
+      final local = File(p.join(tmpDir.path, 'restore-incoming.db'));
+      await picked.saveTo(local.path);
+      await ref.read(backupServiceProvider).restore(local);
+      if (!context.mounted) return;
+      await showDialog<void>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: const Text('Restore complete'),
+          content: const Text('The app will now close. Please reopen it.'),
+          actions: [
+            FilledButton(
+              onPressed: () => SystemNavigator.pop(),
+              child: const Text('Close app'),
+            ),
+          ],
+        ),
+      );
+    } catch (e) {
+      messenger.showSnackBar(SnackBar(
+          content: Text('Restore failed: $e')));
+    }
+  }
   Future<void> _exportLogs(BuildContext context) async {
     try {
       await DiagnosticLogger.instance
@@ -232,7 +326,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
       ),
     );
     final value = ctrl.text.trim();
-    ctrl.dispose();
+    WidgetsBinding.instance.addPostFrameCallback((_) => ctrl.dispose());
     if (ok == true && value.isNotEmpty) {
       await _set(SettingsRepo.currencySymbol, value);
       MoneyFmt.symbol = value;
@@ -316,8 +410,9 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
       ),
     );
     final value = ctrl.text;
-    ctrl.dispose();
+    WidgetsBinding.instance.addPostFrameCallback((_) => ctrl.dispose());
     if (ok == true) await onSave(value);
     if (mounted) setState(() {});
   }
 }
+

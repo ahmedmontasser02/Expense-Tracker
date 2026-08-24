@@ -148,7 +148,7 @@ class _BudgetsScreenState extends ConsumerState<BudgetsScreen> {
         ],
       ),
     );
-    ctrl.dispose();
+    WidgetsBinding.instance.addPostFrameCallback((_) => ctrl.dispose());
     if (result == null) return;
     await ref
         .read(budgetsRepoProvider)
@@ -157,6 +157,7 @@ class _BudgetsScreenState extends ConsumerState<BudgetsScreen> {
     await ref.read(alertServiceProvider).runChecks();
   }
 }
+
 
 
 

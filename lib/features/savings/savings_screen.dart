@@ -167,7 +167,7 @@ class SavingsScreen extends ConsumerWidget {
         ],
       ),
     );
-    ctrl.dispose();
+    WidgetsBinding.instance.addPostFrameCallback((_) => ctrl.dispose());
     if (amount == null || amount <= 0) return;
     await ref.read(transactionsRepoProvider).create(
           TransactionsCompanion.insert(
@@ -181,3 +181,4 @@ class SavingsScreen extends ConsumerWidget {
     await ref.read(alertServiceProvider).runChecks();
   }
 }
+

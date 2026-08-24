@@ -29,7 +29,7 @@ void main() {
       expect(cats.any((c) => c.type == CategoryType.income), isTrue);
     });
 
-    test('balance = income + saved - spent', () async {
+    test('balance = income - spent; savings moves are neutral', () async {
       await txRepo.create(TransactionsCompanion.insert(
         type: TxType.income,
         amountMinor: 100000,
@@ -45,8 +45,8 @@ void main() {
         amountMinor: 20000,
         occurredAt: DateTime.now(),
       ));
-      // 100000 income + 20000 saved - 30000 spent
-      expect(await txRepo.currentBalance(), 90000);
+      // Savings deposits do not change total balance.
+      expect(await txRepo.currentBalance(), 70000);
       expect(await txRepo.savingsPot(), 20000);
 
       await txRepo.create(TransactionsCompanion.insert(
@@ -54,8 +54,43 @@ void main() {
         amountMinor: 5000,
         occurredAt: DateTime.now(),
       ));
-      expect(await txRepo.currentBalance(), 85000);
+      expect(await txRepo.currentBalance(), 70000);
       expect(await txRepo.savingsPot(), 15000);
+    });
+
+    test('malicious strings cannot inject SQL', () async {
+      const evilName = "Robert'); DROP TABLE transactions;--";
+      const evilNote = "x'; DELETE FROM categories; SELECT '";
+      final evilCatId = await db.into(db.categories).insert(
+            CategoriesCompanion.insert(
+              name: evilName,
+              type: CategoryType.expense,
+            ),
+          );
+      await txRepo.create(TransactionsCompanion.insert(
+        type: TxType.expense,
+        amountMinor: 1234,
+        categoryId: Value(evilCatId),
+        note: Value(evilNote),
+        occurredAt: DateTime.now(),
+      ));
+
+      // Tables still exist and data round-trips verbatim.
+      final txs = await txRepo.db.select(txRepo.db.transactions).get();
+      expect(txs, hasLength(1));
+      expect(txs.single.note, evilNote);
+      final cat = await (txRepo.db.select(txRepo.db.categories)
+            ..where((c) => c.id.equals(evilCatId)))
+          .getSingle();
+      expect(cat.name, evilName);
+
+      // Searching for an injection pattern is safe (parameterized LIKE).
+      final hits = await txRepo
+          .watchFiltered(search: "'; DROP TABLE transactions;--")
+          .first;
+      expect(hits, isEmpty);
+      expect(await txRepo.db.select(txRepo.db.transactions).get(),
+          hasLength(1));
     });
 
     test('expenseByCategory groups by category within range', () async {

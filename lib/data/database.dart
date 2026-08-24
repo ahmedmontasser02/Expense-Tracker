@@ -4,6 +4,7 @@ import 'package:drift/drift.dart';
 import 'package:drift/native.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
+import 'package:sqlite3/sqlite3.dart' as sqlite3;
 
 import '../core/category_presets.dart';
 import '../core/enums.dart';
@@ -100,9 +101,15 @@ class SettingsEntries extends Table {
   ],
 )
 class AppDatabase extends _$AppDatabase {
-  AppDatabase() : super(_openConnection());
+  AppDatabase({String? encryptionKey}) : super(_openConnection(encryptionKey));
 
   AppDatabase.forTesting(super.e);
+
+  /// Path of the database file used by [AppDatabase()] (not the test one).
+  static Future<File> databaseFile() async {
+    final dir = await getApplicationDocumentsDirectory();
+    return File(p.join(dir.path, 'expense_tracker.sqlite'));
+  }
 
   @override
   int get schemaVersion => 2;
@@ -147,10 +154,73 @@ class AppDatabase extends _$AppDatabase {
   }
 }
 
-LazyDatabase _openConnection() {
+LazyDatabase _openConnection(String? encryptionKey) {
   return LazyDatabase(() async {
-    final dir = await getApplicationDocumentsDirectory();
-    final file = File(p.join(dir.path, 'expense_tracker.sqlite'));
-    return NativeDatabase.createInBackground(file);
+    final file = await AppDatabase.databaseFile();
+
+    // One-time upgrade: move a legacy plaintext database into an
+    // SQLCipher-encrypted one, preserving all data.
+    if (encryptionKey != null) {
+      await migratePlaintextToEncrypted(file, encryptionKey);
+    }
+
+    // Foreground executor: the SQLCipher library override registered in
+    // main() lives in this isolate; a background isolate would not see it.
+    return NativeDatabase(
+      file,
+      setup: (rawDb) {
+        if (encryptionKey != null) {
+          rawDb.execute("PRAGMA key = '$encryptionKey'");
+          // Sanity check: encrypted DBs fail this without the right key.
+          rawDb.select('SELECT count(*) FROM sqlite_master');
+        }
+      },
+    );
   });
+}
+
+/// Escapes a string for safe embedding inside single quotes in a SQL
+/// literal. Used only for file paths and the hex key in PRAGMA/ATTACH
+/// statements, which cannot be parameterized. All user data flows through
+/// Drift's bound variables and never through this.
+String sqlQuoteLiteral(String value) => value.replaceAll("'", "''");
+
+/// If [dbFile] exists as a plaintext SQLite database, converts it to an
+/// encrypted copy (via SQLCipher's sqlcipher_export) and swaps it in.
+/// No-op when the file is missing or already encrypted.
+Future<void> migratePlaintextToEncrypted(File dbFile, String key) async {
+  if (!await dbFile.exists()) return;
+
+  final plain = sqlite3.sqlite3.open(dbFile.path);
+  var isPlaintext = false;
+  try {
+    // Encrypted files throw here when opened without a key.
+    plain.select('SELECT count(*) FROM sqlite_master');
+    isPlaintext = true;
+  } catch (_) {
+    isPlaintext = false;
+  }
+
+  if (!isPlaintext) {
+    plain.dispose();
+    return;
+  }
+
+  try {
+    final tmpPath = '${dbFile.path}.enc';
+    plain.execute(
+        "ATTACH DATABASE '${sqlQuoteLiteral(tmpPath)}' AS encrypted "
+        "KEY '${sqlQuoteLiteral(key)}'");
+    plain.select("SELECT sqlcipher_export('encrypted')");
+    plain.execute("DETACH DATABASE encrypted");
+  } finally {
+    plain.dispose();
+  }
+
+  // Swap: keep the plaintext file briefly as a safety net, replace main.
+  final legacyCopy = File('${dbFile.path}.plaintext.bak');
+  if (await legacyCopy.exists()) await legacyCopy.delete();
+  await dbFile.rename(legacyCopy.path);
+  await File('${dbFile.path}.enc').rename(dbFile.path);
+  await legacyCopy.delete();
 }

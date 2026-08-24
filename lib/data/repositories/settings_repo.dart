@@ -11,6 +11,8 @@ class SettingsRepo {
   static const currencyCode = 'currency.code';
   static const countryCode = 'country.code';
   static const appearanceMode = 'appearance.mode'; // system|light|dark
+  static const lastBackupKey = 'backup.lastAt';
+  static const autoBackupKey = 'backup.autoEnabled';
   static const lowBalancePct = 'alerts.lowBalancePct'; // % of month income
   static const lowBalanceFloorMinor = 'alerts.lowBalanceFloorMinor';
   static const savingsFloorMinor = 'alerts.savingsFloorMinor';
@@ -26,6 +28,8 @@ class SettingsRepo {
     currencyCode: '',
     countryCode: '',
     appearanceMode: 'system',
+    lastBackupKey: '',
+    autoBackupKey: 'false',
     lowBalancePct: '20',
     lowBalanceFloorMinor: '5000',
     savingsFloorMinor: '10000',

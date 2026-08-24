@@ -3,6 +3,8 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:sqlite3/open.dart';
+import 'package:sqlcipher_flutter_libs/sqlcipher_flutter_libs.dart';
 
 import 'core/format.dart';
 import 'core/theme.dart';
@@ -12,6 +14,7 @@ import 'features/onboarding/country_picker_screen.dart';
 import 'features/shell/home_shell.dart';
 import 'providers/providers.dart';
 import 'services/diagnostic_logger.dart';
+import 'services/encryption_key_manager.dart';
 import 'services/notification_service.dart';
 
 Future<void> main() async {
@@ -37,10 +40,20 @@ Future<void> main() async {
       };
 
       await DiagnosticLogger.instance.init();
-      final db = AppDatabase();
+
+      // SQLCipher: route the sqlite3 package to the bundled cipher library
+      // (libsqlcipher.so) before anything touches the database.
+      await applyWorkaroundToOpenSqlCipherOnOldAndroidVersions();
+      open.overrideFor(OperatingSystem.android, openCipherOnAndroid);
+
+      final encryptionKey = await EncryptionKeyManager.instance.getOrCreate();
+      final db = AppDatabase(encryptionKey: encryptionKey);
       runApp(
         ProviderScope(
-          overrides: [databaseProvider.overrideWithValue(db)],
+          overrides: [
+            databaseProvider.overrideWithValue(db),
+            encryptionKeyProvider.overrideWithValue(encryptionKey),
+          ],
           child: const ExpenseTrackerApp(),
         ),
       );
@@ -99,6 +112,9 @@ class _ExpenseTrackerAppState extends ConsumerState<ExpenseTrackerApp>
 
       // 2. Evaluate alert rules and fire deduped notifications.
       await ref.read(alertServiceProvider).runChecks();
+
+      // 2b. Daily automatic backup when due and enabled.
+      await ref.read(backupServiceProvider).autoBackupIfDue();
 
       // 3. Refresh the daily summary slot if enabled.
       if (scheduleSummary) {
@@ -159,32 +175,44 @@ class _ExpenseTrackerAppState extends ConsumerState<ExpenseTrackerApp>
 }
 
 /// Shown instead of the red/grey error screen whenever a widget build fails.
+/// Self-sufficient: renders outside MaterialApp, so no Theme/Directionality
+/// inherited widgets can be assumed.
 class _GracefulError extends StatelessWidget {
   const _GracefulError();
 
   @override
   Widget build(BuildContext context) {
-    return Material(
-      color: Theme.of(context).scaffoldBackgroundColor,
-      child: Center(
-        child: Padding(
-          padding: const EdgeInsets.all(32),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(Icons.error_outline,
-                  size: 56, color: Theme.of(context).colorScheme.error),
-              const SizedBox(height: 16),
-              Text('Something went wrong',
-                  style: Theme.of(context).textTheme.titleMedium),
-              const SizedBox(height: 8),
-              Text(
-                'This view hit an unexpected problem. '
-                'Please go back and try again.',
-                textAlign: TextAlign.center,
-                style: Theme.of(context).textTheme.bodySmall,
-              ),
-            ],
+    final dark = WidgetsBinding
+            .instance.platformDispatcher.platformBrightness ==
+        Brightness.dark;
+    final fg = dark ? const Color(0xFFC9D6D2) : const Color(0xFF33544C);
+    final bg = dark ? const Color(0xFF10201C) : const Color(0xFFF4F8F7);
+    return Directionality(
+      textDirection: TextDirection.ltr,
+      child: ColoredBox(
+        color: bg,
+        child: Center(
+          child: Padding(
+            padding: const EdgeInsets.all(32),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(Icons.error_outline, size: 56, color: fg),
+                const SizedBox(height: 16),
+                Text('Something went wrong',
+                    style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                        color: fg)),
+                const SizedBox(height: 8),
+                Text(
+                  'This view hit an unexpected problem. '
+                  'Please go back and try again.',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(fontSize: 13, color: fg),
+                ),
+              ],
+            ),
           ),
         ),
       ),
@@ -212,3 +240,5 @@ class _Splash extends StatelessWidget {
     );
   }
 }
+
+
