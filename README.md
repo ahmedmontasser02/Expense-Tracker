@@ -74,23 +74,46 @@ Covers money/date math (including month-end clamping and DST-safe recurring step
 
 ## CI/CD
 
-GitHub Actions (`.github/workflows/ci.yml`) runs on every push/PR to `main`:
+GitHub Actions workflows:
 
-1. `flutter pub get`
-2. `flutter analyze --fatal-infos`
-3. `flutter test`
-4. `flutter build apk --release` + `flutter build appbundle --release`
-5. Uploads the APK and AAB as artifacts
+| Workflow | Trigger | What it does |
+|---|---|---|
+| **CI** (`.github/workflows/ci.yml`) | push / PR to `main` | pub get → analyze → tests → release APK + AAB builds → artifacts |
+| **Release** (`.github/workflows/release.yml`) | tag `v*` | analyze → tests → universal release APK → **GitHub Release with downloadable APK** |
 
-CI builds are debug-signed; the release keystore is intentionally not committed.
+## Install on your devices (sideloading)
+
+No Play Store needed — the app is distributed as a signed APK:
+
+1. Go to the repo's **Releases** page and download `expense-tracker-vX.Y.Z-<tag>.apk`
+   (or grab the APK artifact from any CI run on `main`).
+2. Copy it to your Android device, tap it, and allow *Install unknown apps*
+   for whichever app you open it with (browser/file manager). You may need to
+   confirm once per device.
+3. Done — updates install the same way; Android updates the app in place as
+   long as the new APK is signed with the same key (it always is, see below).
+
+> **Keep the signing key consistent:** `android/app/upload-keystore.jks` signs
+> every release build. Android refuses to *update* an installed app with an
+> APK signed by a different key (you'd have to uninstall first, losing local
+> data). Back up the keystore and its passwords.
+
+## Release a new version
+
+```bash
+# bump `version:` in pubspec.yaml, commit, then:
+git tag v1.0.1
+git push origin main v1.0.1
+```
+
+The Release workflow builds and attaches the APK to a GitHub Release
+automatically.
 
 ## Release signing (local)
 
-`android/key.properties` + `android/app/upload-keystore.jks` (both gitignored) hold the upload key. `android/app/build.gradle.kts` uses them when present and falls back to debug signing otherwise.
+`android/key.properties` + `android/app/upload-keystore.jks` (both gitignored) hold the upload key. `android/app/build.gradle.kts` uses them when present and falls back to debug signing otherwise (CI builds).
 
-> **Back up `upload-keystore.jks` and its passwords** — losing them means you cannot update an already-published Play Store listing with the same signature.
-
-Build release artifacts:
+Build release artifacts locally:
 
 ```bash
 flutter build apk --release        # build/app/outputs/flutter-apk/app-release.apk
