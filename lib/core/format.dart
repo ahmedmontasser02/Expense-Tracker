@@ -33,6 +33,48 @@ class MoneyFmt {
     if (value == null || value < 0) return 0;
     return (value * 100).round();
   }
+
+  /// Extracts an amount (minor units) and a cleaned note from arbitrary
+  /// shared text, e.g. "Paid 250.50 for lunch at Koshary" →
+  /// (25050, 'Paid 250.50 for lunch at Koshary').
+  /// Handles European formatting ("1.250,50") and thousands separators.
+  static (int?, String) parseSharedTransaction(String raw) {
+    final text = raw.trim();
+    if (text.isEmpty) return (null, text);
+
+    final matches = RegExp(r'\d[\d.,]*').allMatches(text).toList();
+    int? amountMinor;
+    for (final m in matches) {
+      final token = m.group(0)!;
+      final hasComma = token.contains(',');
+      final hasDot = token.contains('.');
+      String normalized;
+      if (hasComma && hasDot) {
+        // The right-most separator is the decimal one.
+        normalized = token.lastIndexOf(',') > token.lastIndexOf('.')
+            ? token.replaceAll('.', '').replaceAll(',', '.')
+            : token.replaceAll(',', '');
+      } else if (hasComma) {
+        // Comma is decimal only when followed by exactly 2 digits.
+        normalized = RegExp(r',\d{1,2}$').hasMatch(token)
+            ? token.replaceAll(',', '.')
+            : token.replaceAll(',', '');
+      } else if (hasDot) {
+        normalized = RegExp(r'\.\d{1,2}$').hasMatch(token) &&
+                !RegExp(r'\.\d{3}(\.|$)').hasMatch(token)
+            ? token
+            : token.replaceAll('.', '');
+      } else {
+        normalized = token;
+      }
+      final value = double.tryParse(normalized);
+      if (value != null && value > 0) {
+        amountMinor = (value * 100).round();
+        break;
+      }
+    }
+    return (amountMinor, text);
+  }
 }
 
 class DateX {

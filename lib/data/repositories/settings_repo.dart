@@ -13,6 +13,9 @@ class SettingsRepo {
   static const appearanceMode = 'appearance.mode'; // system|light|dark
   static const lastBackupKey = 'backup.lastAt';
   static const autoBackupKey = 'backup.autoEnabled';
+  static const whatsNewSeenVersion = 'whatsnew.seenVersion';
+  static const updateLastCheckedAt = 'update.lastCheckedAt';
+  static const updateSkippedVersion = 'update.skippedVersion';
   static const lowBalancePct = 'alerts.lowBalancePct'; // % of month income
   static const lowBalanceFloorMinor = 'alerts.lowBalanceFloorMinor';
   static const savingsFloorMinor = 'alerts.savingsFloorMinor';

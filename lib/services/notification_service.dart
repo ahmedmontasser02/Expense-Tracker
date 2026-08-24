@@ -18,13 +18,25 @@ class NotificationService {
   final _plugin = FlutterLocalNotificationsPlugin();
   bool _ready = false;
 
+  /// Called when the user taps a notification or one of its action buttons.
+  /// The payload carries an app command, e.g. 'quick_add'.
+  void Function(String payload)? onPayload;
+
   Future<void> init() async {
     if (_ready) return;
     const settings = InitializationSettings(
       android: AndroidInitializationSettings('@mipmap/ic_launcher'),
       iOS: DarwinInitializationSettings(),
     );
-    await _plugin.initialize(settings: settings);
+    await _plugin.initialize(
+      settings: settings,
+      onDidReceiveNotificationResponse: (response) {
+        final payload = response.payload;
+        if (payload != null && payload.isNotEmpty) {
+          onPayload?.call(payload);
+        }
+      },
+    );
 
     final android =
         _plugin.resolvePlatformSpecificImplementation<
@@ -56,21 +68,35 @@ class NotificationService {
           _channelName,
           importance: Importance.high,
           priority: Priority.high,
+          actions: [
+            AndroidNotificationAction(
+              'quick_add',
+              'Add expense',
+              showsUserInterface: true,
+            ),
+          ],
         ),
         iOS: DarwinNotificationDetails(),
       );
 
-  Future<void> showAlert(int id, String title, String body) async {
+  Future<void> showAlert(int id, String title, String body,
+      {String payload = 'quick_add'}) async {
     if (!_ready) return;
     try {
-      await _plugin.show(id: id, title: title, body: body, notificationDetails: _details);
+      await _plugin.show(
+          id: id,
+          title: title,
+          body: body,
+          notificationDetails: _details,
+          payload: payload);
     } catch (e) {
       debugPrint('notify failed: $e');
     }
   }
 
   /// Schedules (or replaces) the daily reminder at [hour]:00 local time.
-  Future<void> scheduleDailySummary(int hour, String title, String body) async {
+  Future<void> scheduleDailySummary(int hour, String title, String body,
+      {String payload = 'quick_add'}) async {
     if (!_ready) return;
     final now = tz.TZDateTime.now(tz.local);
     var when = tz.TZDateTime(tz.local, now.year, now.month, now.day, hour);
@@ -86,6 +112,7 @@ class NotificationService {
         notificationDetails: _details,
         androidScheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,
         matchDateTimeComponents: DateTimeComponents.time,
+        payload: payload,
       );
     } catch (e) {
       debugPrint('schedule failed: $e');
@@ -95,5 +122,11 @@ class NotificationService {
   Future<void> cancelDailySummary() async {
     if (!_ready) return;
     await _plugin.cancel(id: _summaryId);
+  }
+
+  /// Details when the app was launched by tapping a notification.
+  Future<NotificationAppLaunchDetails?> launchDetails() {
+    if (!_ready) return Future.value(null);
+    return _plugin.getNotificationAppLaunchDetails();
   }
 }

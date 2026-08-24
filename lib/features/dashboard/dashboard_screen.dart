@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../core/constants.dart';
 import '../../core/enums.dart';
 import '../../core/format.dart';
 import '../../core/theme.dart';
@@ -11,6 +12,7 @@ import '../recurring/recurring_screen.dart';
 import '../savings/savings_screen.dart';
 import '../transactions/transactions_screen.dart';
 import '../widgets/common.dart';
+import '../widgets/update_banner.dart';
 import '../../providers/providers.dart';
 
 class DashboardScreen extends ConsumerWidget {
@@ -31,6 +33,16 @@ class DashboardScreen extends ConsumerWidget {
       appBar: AppBar(
         title: const Text('Expense Tracker'),
         actions: [
+          if (isDevBuild)
+            const Padding(
+              padding: EdgeInsets.only(right: 8),
+              child: Chip(
+                label: Text('DEV',
+                    style:
+                        TextStyle(fontSize: 11, fontWeight: FontWeight.bold)),
+                visualDensity: VisualDensity.compact,
+              ),
+            ),
           IconButton(
             tooltip: 'Manage categories',
             icon: const Icon(Icons.category_outlined),
@@ -42,6 +54,7 @@ class DashboardScreen extends ConsumerWidget {
       body: ListView(
         padding: const EdgeInsets.fromLTRB(16, 8, 16, 96),
         children: [
+          const UpdateBanner(),
           _BalanceCard(
             balance: balance.value,
             savings: pot.value,
@@ -290,3 +303,4 @@ class TransactionTile extends StatelessWidget {
     );
   }
 }
+

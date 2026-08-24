@@ -11,9 +11,12 @@ import '../widgets/pickers.dart';
 
 /// Opens the add/edit screen and returns true if something was saved.
 Future<void> openTransactionEditor(BuildContext context, WidgetRef ref,
-    [Tx? existing]) async {
+    [Tx? existing, ({int? amountMinor, String? note})? prefill]) async {
   await Navigator.of(context).push(MaterialPageRoute(
-    builder: (_) => TransactionEditorScreen(existing: existing),
+    builder: (_) => TransactionEditorScreen(
+      existing: existing,
+      prefill: prefill,
+    ),
   ));
 }
 
@@ -22,9 +25,12 @@ enum _Kind { expense, income, savings }
 /// Full-screen add/edit transaction form, covering expenses, incomes and
 /// savings deposits/withdrawals (optionally linked to a goal).
 class TransactionEditorScreen extends ConsumerStatefulWidget {
-  const TransactionEditorScreen({super.key, this.existing});
+  const TransactionEditorScreen({super.key, this.existing, this.prefill});
 
   final Tx? existing;
+
+  /// Values used to prefill a brand-new entry (share-to-log, quick actions).
+  final ({int? amountMinor, String? note})? prefill;
 
   @override
   ConsumerState<TransactionEditorScreen> createState() =>
@@ -47,11 +53,16 @@ class _TransactionEditorScreenState
   void initState() {
     super.initState();
     final existing = widget.existing;
+    final prefill = widget.prefill;
     _type = existing?.type ?? TxType.expense;
-    _amountCtrl = TextEditingController(text: existing == null
-        ? ''
-        : (existing.amountMinor / 100).toStringAsFixed(2));
-    _noteCtrl = TextEditingController(text: existing?.note ?? '');
+    _amountCtrl = TextEditingController(
+        text: existing == null
+            ? (prefill?.amountMinor != null
+                ? (prefill!.amountMinor! / 100).toStringAsFixed(2)
+                : '')
+            : (existing.amountMinor / 100).toStringAsFixed(2));
+    _noteCtrl = TextEditingController(
+        text: existing?.note ?? prefill?.note ?? '');
     _categoryId = existing?.categoryId;
     _goalId = existing?.goalId;
     _date = existing?.occurredAt ?? DateTime.now();

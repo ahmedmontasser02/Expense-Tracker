@@ -374,12 +374,23 @@ class _TotalsRow extends StatelessWidget {
         child: Row(
           mainAxisAlignment: MainAxisAlignment.spaceAround,
           children: [
-            _total(context, 'Income', fmtAmount(symbol, income),
-                AppTheme.incomeColor(context)),
-            _total(context, 'Spent', fmtAmount(symbol, expense),
-                AppTheme.expenseColor(context)),
-            _total(context, 'Net', fmtAmount(symbol, net),
-                net >= 0 ? AppTheme.incomeColor(context) : Colors.red),
+            Expanded(
+              child: _total(context, 'Income', fmtAmount(symbol, income),
+                  AppTheme.incomeColor(context)),
+            ),
+            Expanded(
+              child: _total(context, 'Spent', fmtAmount(symbol, expense),
+                  AppTheme.expenseColor(context)),
+            ),
+            Expanded(
+              child: _total(
+                  context,
+                  'Net',
+                  fmtAmount(symbol, net),
+                  net >= 0
+                      ? AppTheme.incomeColor(context)
+                      : Colors.red),
+            ),
           ],
         ),
       ),
@@ -389,11 +400,15 @@ class _TotalsRow extends StatelessWidget {
   Widget _total(BuildContext c, String label, String value, Color color) =>
       Column(children: [
         Text(label, style: Theme.of(c).textTheme.bodySmall),
-        Text(value,
-            style: Theme.of(c)
-                .textTheme
-                .titleMedium
-                ?.copyWith(fontWeight: FontWeight.bold, color: color)),
+        FittedBox(
+          fit: BoxFit.scaleDown,
+          child: Text(value,
+              maxLines: 1,
+              style: Theme.of(c)
+                  .textTheme
+                  .titleMedium
+                  ?.copyWith(fontWeight: FontWeight.bold, color: color)),
+        ),
       ]);
 }
 
