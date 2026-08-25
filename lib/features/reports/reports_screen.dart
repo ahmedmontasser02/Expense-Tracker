@@ -86,7 +86,11 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
                       _TotalsRow(rows: rows, symbol: sym),
                       const SizedBox(height: 16),
                       if (_gran != _Granularity.day && hasExpense) ...[
-                        _BarChartCard(rows: rows, gran: _gran, symbol: sym),
+                        _BarChartCard(
+                            rows: rows,
+                            gran: _gran,
+                            symbol: sym,
+                            anchor: _anchor),
                         const SizedBox(height: 16),
                       ],
                       if (hasExpense) ...[
@@ -419,16 +423,21 @@ class _BarChartCard extends StatelessWidget {
     required this.rows,
     required this.gran,
     required this.symbol,
+    required this.anchor,
   });
 
   final List<Tx> rows;
   final _Granularity gran;
   final String symbol;
 
+  /// The month/year being viewed — bucket count must follow it, not today.
+  final DateTime anchor;
+
   @override
   Widget build(BuildContext context) {
     final buckets = <int, int>{}; // bucket index -> expense minor
-    final count = gran == _Granularity.month ? _daysInMonth : 12;
+    final count =
+        gran == _Granularity.month ? DateTime(anchor.year, anchor.month + 1, 0).day : 12;
     for (final r in rows.where((r) => r.type == TxType.expense)) {
       final idx = gran == _Granularity.month
           ? r.occurredAt.day - 1
@@ -467,8 +476,17 @@ class _BarChartCard extends StatelessWidget {
                       sideTitles: SideTitles(
                         showTitles: true,
                         reservedSize: 24,
-                        getTitlesWidget: (v, _) => Text(_bucketLabel(v.toInt()),
-                            style: const TextStyle(fontSize: 9)),
+                        // fl_chart titles every bar group, so filter here —
+                        // 31 daily labels cannot fit side by side.
+                        getTitlesWidget: (v, _) {
+                          final i = v.toInt();
+                          final show = gran == _Granularity.month
+                              ? i % 5 == 0 || i == count - 1
+                              : true;
+                          if (!show) return const SizedBox.shrink();
+                          return Text(_bucketLabel(i),
+                              style: const TextStyle(fontSize: 10));
+                        },
                       ),
                     ),
                   ),
@@ -479,7 +497,7 @@ class _BarChartCard extends StatelessWidget {
                       BarChartGroupData(x: i, barRods: [
                         BarChartRodData(
                           toY: (buckets[i] ?? 0).toDouble(),
-                          width: gran == _Granularity.year ? 14 : 6,
+                          width: gran == _Granularity.year ? 14 : 10,
                           borderRadius: BorderRadius.circular(3),
                           color: AppTheme.expenseColor(context),
                         )
@@ -492,11 +510,6 @@ class _BarChartCard extends StatelessWidget {
         ),
       ),
     );
-  }
-
-  static int get _daysInMonth {
-    final now = DateTime.now();
-    return DateTime(now.year, now.month + 1, 0).day;
   }
 
   double _maxY(Map<int, int> buckets, int count) {

@@ -6,6 +6,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
+import 'package:share_plus/share_plus.dart';
 
 import '../../core/format.dart';
 import '../../data/repositories/settings_repo.dart';
@@ -260,7 +261,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
 
       // Newer release available — offer download + install with progress.
       var phase = _ManualUpdatePhase.confirm;
-      await showDialog<void>(
+      final dismissed = await showDialog<String>(
         context: context,
         builder: (ctx) => StatefulBuilder(
           builder: (ctx, setDialog) => AlertDialog(
@@ -285,7 +286,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
             actions: [
               if (phase == _ManualUpdatePhase.confirm)
                 TextButton(
-                    onPressed: () => Navigator.pop(ctx),
+                    onPressed: () => Navigator.pop(ctx, 'later'),
                     child: const Text('Later')),
               if (phase == _ManualUpdatePhase.confirm)
                 FilledButton(
@@ -310,12 +311,16 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                 ),
               if (phase == _ManualUpdatePhase.error)
                 FilledButton(
-                    onPressed: () => Navigator.pop(ctx),
+                    onPressed: () => Navigator.pop(ctx, 'close'),
                     child: const Text('Close')),
             ],
           ),
         ),
       );
+      if (dismissed == 'later') {
+        messenger.showSnackBar(
+            const SnackBar(content: Text('Update canceled')));
+      }
     } catch (e) {
       messenger.showSnackBar(SnackBar(content: Text('Update check failed: $e')));
     } finally {
@@ -340,6 +345,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   }
 
   Future<void> _restoreFlow(BuildContext context) async {
+    final messenger = ScaffoldMessenger.of(context);
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
@@ -358,11 +364,18 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
         ],
       ),
     );
-    if (confirmed != true || !context.mounted) return;
+    if (confirmed != true || !context.mounted) {
+      messenger.showSnackBar(
+          const SnackBar(content: Text('Restore canceled')));
+      return;
+    }
 
-    final messenger = ScaffoldMessenger.of(context);
     final XFile? picked = await openFile();
-    if (picked == null) return;
+    if (picked == null) {
+      messenger.showSnackBar(
+          const SnackBar(content: Text('Restore canceled')));
+      return;
+    }
     try {
       // Copy out of the provider cache into app storage first.
       final tmpDir = await getTemporaryDirectory();
@@ -389,13 +402,19 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     }
   }
   Future<void> _exportLogs(BuildContext context) async {
+    final messenger = ScaffoldMessenger.of(context);
     try {
-      await DiagnosticLogger.instance
+      final result = await DiagnosticLogger.instance
           .exportReport(ref.read(logsRepoProvider));
+      messenger.showSnackBar(SnackBar(content: Text(switch (result.status) {
+        ShareResultStatus.success => 'Diagnostic report exported',
+        ShareResultStatus.dismissed => 'Export canceled',
+        ShareResultStatus.unavailable =>
+          'Could not export logs: sharing unavailable',
+      })));
     } catch (e) {
-      if (!context.mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-          content: Text('Could not export logs: $e')));
+      messenger.showSnackBar(
+          SnackBar(content: Text('Could not export logs: $e')));
     }
   }
   Future<void> _copyLogs(BuildContext context) async {

@@ -99,13 +99,14 @@ class DiagnosticLogger {
   }
 
   /// Writes the report to a timestamped file and opens the share sheet.
-  Future<void> exportReport(LogsRepo logs) async {
+  /// Returns the share result so callers can tell "sent" from "canceled".
+  Future<ShareResult> exportReport(LogsRepo logs) async {
     final report = await collectReport(logs);
     final dir = await getTemporaryDirectory();
     final stamp = DateTime.now().toIso8601String().replaceAll(':', '-');
     final file = File(p.join(dir.path, 'expense_tracker_logs_$stamp.txt'));
     await file.writeAsString(report);
-    await SharePlus.instance.share(ShareParams(
+    return SharePlus.instance.share(ShareParams(
       files: [XFile(file.path)],
       text: 'Expense Tracker diagnostic logs',
     ));

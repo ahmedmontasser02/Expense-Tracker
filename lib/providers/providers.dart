@@ -91,12 +91,12 @@ final currencySymbolProvider = Provider<String>((ref) {
       SettingsRepo.defaults[SettingsRepo.currencySymbol]!;
 });
 
-/// True once first-run country selection is complete. Emits only after
-/// settings load, so the UI can hold a splash instead of flashing onboarding.
+/// True once first-run country selection is complete. Iterates the settings
+/// stream so later writes re-emit data WITHOUT a loading state — a loading
+/// state would swap MaterialApp's home for the splash and reset navigation
+/// to the first tab mid-operation.
 final countryConfiguredProvider = StreamProvider<bool>((ref) async* {
-  final settings = ref.watch(settingsMapProvider);
-  final map = settings.value;
-  if (map != null) {
+  await for (final map in ref.watch(settingsRepoProvider).watchAll()) {
     yield (map[SettingsRepo.countryCode] ?? '').isNotEmpty;
   }
 });

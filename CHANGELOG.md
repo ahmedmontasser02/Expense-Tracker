@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.3.1
+- Fixed: update checker and downloads failed in installed (release) builds —
+  the app was missing the INTERNET permission
+- Fixed: operations in Settings (update check, backups, theme, thresholds)
+  bounced back to the Home tab; they now stay in place and report their
+  result — including "canceled" — as a toast
+- Fixed: Spending trend chart — readable day labels (every 5th day), wider
+  bars, and correct day count for past months
+
 ## 1.3.0
 - Tags: label transactions your way and manage them under Organize → Tags
 - Category splits: split one expense across categories (reports and
