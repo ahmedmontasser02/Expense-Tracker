@@ -1,5 +1,8 @@
 # Changelog
 
+## 1.4.1
+- Fixed: Restore from backup now auto-discovers local backups — the private `ExpenseTrackerBackups` folder is invisible to the system file picker, so the app now lists `BackupService.listBackups()` with date/version/size and restores directly; `Browse files…` remains for external imports
+
 ## 1.4.0
 - Visual redesign: Light = Fortress Finance (teal + paper, Hanken Grotesk / Inter / JetBrains Mono); Dark = Neon Tokyo (near-black with pink/cyan/yellow glows, Sora / Inter / Space Grotesk)
 - Bundled variable fonts and per-mode theme (semantic income/spent/saved, balance gradient, bordered cards, mono caps labels, glows)
