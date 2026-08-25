@@ -130,6 +130,9 @@ void main() {
       rulesRepo = RulesRepo(db);
     });
 
+    int catId(List<Category> cats, String name) =>
+        cats.firstWhere((c) => c.name == name).id;
+
     test('expenseByCategory attributes split portions per category',
         () async {
       final cats = await db.select(db.categories).get();
@@ -155,11 +158,9 @@ void main() {
       expect(spend.values.fold<int>(0, (a, b) => a + b), 5000);
     });
 
-    test('setSplits replaces rows; delete cascades joins; undo restores them',
-        () async {
+    test('setSplits replaces previous split rows', () async {
       final cats = await db.select(db.categories).get();
       final food = cats.firstWhere((c) => c.name == 'Groceries');
-      final tagId = await tagsRepo.getOrCreate('weekly shop');
       final txId = await txRepo.create(TransactionsCompanion.insert(
         type: TxType.expense,
         amountMinor: 4000,
@@ -171,8 +172,6 @@ void main() {
         (categoryId: food.id, amountMinor: 2500, note: null),
         (categoryId: food.id, amountMinor: 1000, note: null),
       ]);
-      expect(txRepo.hasSplits(txId), completion(isTrue));
-      await tagsRepo.setTagsForTx(txId, [tagId]);
 
       // Replace: three rows become two.
       await txRepo.setSplits(txId, [
@@ -180,6 +179,23 @@ void main() {
         (categoryId: food.id, amountMinor: 3000, note: 'b'),
       ]);
       expect(await txRepo.splitsForTx(txId), hasLength(2));
+    });
+
+    test('delete cascades joins and undo restores them', () async {
+      final cats = await db.select(db.categories).get();
+      final food = cats.firstWhere((c) => c.name == 'Groceries');
+      final tagId = await tagsRepo.getOrCreate('weekly shop');
+      final txId = await txRepo.create(TransactionsCompanion.insert(
+        type: TxType.expense,
+        amountMinor: 4000,
+        categoryId: Value(food.id),
+        occurredAt: DateTime.now(),
+      ));
+      await txRepo.setSplits(txId, [
+        (categoryId: food.id, amountMinor: 1000, note: 'a'),
+        (categoryId: food.id, amountMinor: 3000, note: 'b'),
+      ]);
+      await tagsRepo.setTagsForTx(txId, [tagId]);
 
       // Delete captures joins for undo.
       final tx =
@@ -200,36 +216,34 @@ void main() {
     test('matchCategory honours priority over recency and skips disabled',
         () async {
       final cats = await db.select(db.categories).get();
-      int catId(String name) => cats.firstWhere((c) => c.name == name).id;
       // Older + low priority.
       await rulesRepo.create(RulesCompanion.insert(
         pattern: 'netflix',
-        categoryId: catId('Subscriptions'),
+        categoryId: catId(cats, 'Subscriptions'),
       ));
       // Newer but highest priority wins first.
       final strong = await rulesRepo.create(RulesCompanion.insert(
         pattern: 'net',
-        categoryId: catId('Shopping'),
+        categoryId: catId(cats, 'Shopping'),
         priority: const Value(10),
       ));
 
       expect(await rulesRepo.matchCategory('NETFLIX subscription'),
-          catId('Shopping'));
+          catId(cats, 'Shopping'));
       expect(await rulesRepo.matchCategory('unrelated'), isNull);
 
       await rulesRepo.setEnabled(strong, false);
       expect(await rulesRepo.matchCategory('netflix subscription'),
-          catId('Subscriptions'));
+          catId(cats, 'Subscriptions'));
     });
 
     test('suggestCategory learns from historical note tokens', () async {
       final cats = await db.select(db.categories).get();
-      int catId(String name) => cats.firstWhere((c) => c.name == name).id;
       Future<void> add(String note, String cat) =>
           txRepo.create(TransactionsCompanion.insert(
             type: TxType.expense,
             amountMinor: 1000,
-            categoryId: Value(catId(cat)),
+            categoryId: Value(catId(cats, cat)),
             note: Value(note),
             occurredAt: DateTime.now(),
           ));
@@ -239,21 +253,28 @@ void main() {
 
       // 'uber' appears twice under Transport vs once under Lunch.
       expect(await rulesRepo.suggestCategory('uber trip tomorrow'),
-          catId('Transport'));
+          catId(cats, 'Transport'));
       // No history at all -> null.
       expect(await rulesRepo.suggestCategory('zzz qqq'), isNull);
     });
 
-    test('tags dedupe case-insensitively; rename; delete detaches joins',
-        () async {
+    test('getOrCreate dedupes tags case-insensitively', () async {
       final a = await tagsRepo.getOrCreate('Travel');
       final b = await tagsRepo.getOrCreate('travel');
       expect(a, b);
+      expect(await tagsRepo.all(), hasLength(1));
+    });
 
+    test('rename updates the tag name in place', () async {
+      final a = await tagsRepo.getOrCreate('Travel');
       await tagsRepo.rename(a, 'Trips');
       final all = await tagsRepo.all();
       expect(all.single.name, 'Trips');
+    });
 
+    test('delete removes the tag and detaches it from transactions',
+        () async {
+      final a = await tagsRepo.getOrCreate('Travel');
       final cats = await db.select(db.categories).get();
       final txId = await txRepo.create(TransactionsCompanion.insert(
         type: TxType.expense,
@@ -270,8 +291,13 @@ void main() {
     });
 
     test('v2 -> v3 upgrade migrates a real legacy database', () async {
-      // Hand-build a v2-shaped database: no tags/splits/rules tables,
-      // transactions without receipt_path, budgets index already present.
+      // PRODUCTION REGRESSION (2026-08-25, found deploying M3 to the
+      // emulator): the v3 migration used createAll(), which tried to
+      // recreate the already-existing budgets unique index and crashed
+      // every real upgrade with "idx_budget_cat_month already exists".
+      // Hand-build a v2-shaped database to keep this path covered:
+      // no tags/splits/rules tables, transactions without receipt_path,
+      // budgets index already present.
       final dir = await Directory.systemTemp.createTemp('m3migration');
       addTearDown(() => dir.delete(recursive: true));
       final legacyPath = p.join(dir.path, 'legacy.sqlite');
