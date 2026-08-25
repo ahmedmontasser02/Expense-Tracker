@@ -11,6 +11,7 @@ import 'package:share_plus/share_plus.dart';
 import '../../core/format.dart';
 import '../../data/repositories/settings_repo.dart';
 import '../../providers/providers.dart';
+import '../../services/backup_service.dart';
 import '../../services/diagnostic_logger.dart';
 import '../../services/update_checker.dart';
 import 'package:package_info_plus/package_info_plus.dart';
@@ -356,7 +357,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
               child: const Text('Cancel')),
           FilledButton(
               onPressed: () => Navigator.pop(ctx, true),
-              child: const Text('Choose file')),
+              child: const Text('Continue')),
         ],
       ),
     );
@@ -366,18 +367,52 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
       return;
     }
 
-    final XFile? picked = await openFile();
-    if (picked == null) {
-      messenger.showSnackBar(
-          const SnackBar(content: Text('Restore canceled')));
+    // Auto-discover local backups first — they live in the app's private
+    // directory (app_flutter/ExpenseTrackerBackups) which the system file
+    // picker cannot see, so we surface them automatically.
+    File backupFile;
+    try {
+      final backups = await ref.read(backupServiceProvider).listBackups();
+      if (backups.isNotEmpty && context.mounted) {
+        final picked = await _pickLocalBackup(context, backups);
+        if (picked == null) {
+          // null = canceled from the picker; check sentinel for browse.
+          if (picked == null && _browseRequested) {
+            _browseRequested = false;
+            final ext = await openFile();
+            if (ext == null) {
+              messenger.showSnackBar(
+                  const SnackBar(content: Text('Restore canceled')));
+              return;
+            }
+            final tmpDir = await getTemporaryDirectory();
+            backupFile = File(p.join(tmpDir.path, 'restore-incoming.db'));
+            await ext.saveTo(backupFile.path);
+          } else {
+            messenger.showSnackBar(
+                const SnackBar(content: Text('Restore canceled')));
+            return;
+          }
+        } else {
+          backupFile = picked;
+        }
+      } else {
+        final XFile? ext = await openFile();
+        if (ext == null) {
+          messenger.showSnackBar(
+              const SnackBar(content: Text('Restore canceled')));
+          return;
+        }
+        final tmpDir = await getTemporaryDirectory();
+        backupFile = File(p.join(tmpDir.path, 'restore-incoming.db'));
+        await ext.saveTo(backupFile.path);
+      }
+    } catch (e) {
+      messenger.showSnackBar(SnackBar(content: Text('Could not list backups: $e')));
       return;
     }
     try {
-      // Copy out of the provider cache into app storage first.
-      final tmpDir = await getTemporaryDirectory();
-      final local = File(p.join(tmpDir.path, 'restore-incoming.db'));
-      await picked.saveTo(local.path);
-      await ref.read(backupServiceProvider).restore(local);
+      await ref.read(backupServiceProvider).restore(backupFile);
       if (!context.mounted) return;
       await showDialog<void>(
         context: context,
@@ -397,6 +432,60 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
           content: Text('Restore failed: $e')));
     }
   }
+  bool _browseRequested = false;
+
+  Future<File?> _pickLocalBackup(
+      BuildContext context, List<BackupEntry> backups) async {
+    _browseRequested = false;
+    return showDialog<File?>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Choose a backup'),
+        content: SizedBox(
+          width: double.maxFinite,
+          height: 340,
+          child: backups.isEmpty
+              ? const Center(child: Text('No local backups found'))
+              : ListView.separated(
+                  shrinkWrap: true,
+                  itemCount: backups.length,
+                  separatorBuilder: (context, index) => const Divider(height: 1),
+                  itemBuilder: (c, i) {
+                    final e = backups[i];
+                    final size = e.sizeBytes < 1024 * 1024
+                        ? '${(e.sizeBytes / 1024).toStringAsFixed(1)} KB'
+                        : '${(e.sizeBytes / (1024 * 1024)).toStringAsFixed(1)} MB';
+                    return ListTile(
+                      leading: const Icon(Icons.backup_outlined),
+                      title: Text(DateX.prettyDateTime(e.createdAt)),
+                      subtitle: Text(
+                          '${e.appVersion.isEmpty ? 'v?' : 'v${e.appVersion}'} • $size'),
+                      trailing: const Icon(Icons.chevron_right, size: 18),
+                      onTap: () => Navigator.pop(ctx, e.file),
+                    );
+                  },
+                ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () {
+              _browseRequested = false;
+              Navigator.pop(ctx);
+            },
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () {
+              _browseRequested = true;
+              Navigator.pop(ctx);
+            },
+            child: const Text('Browse files…'),
+          ),
+        ],
+      ),
+    );
+  }
+
   Future<void> _exportLogs(BuildContext context) async {
     final messenger = ScaffoldMessenger.of(context);
     try {
