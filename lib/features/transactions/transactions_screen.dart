@@ -1,14 +1,20 @@
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/format.dart';
 import '../../data/database.dart';
+import '../../data/repositories/settings_repo.dart';
 import '../../providers/providers.dart';
 import '../dashboard/dashboard_screen.dart';
 import '../widgets/common.dart';
 import '../shell/transaction_editor_screen.dart';
 
 enum _Range { today, week, month, year, all }
+
+/// A named, persisted combination of range/category filter.
+typedef SavedFilter = ({String name, int range, int? categoryId});
 
 extension _RangeX on _Range {
   String get label => switch (this) {
@@ -50,6 +56,84 @@ class _TransactionsScreenState extends ConsumerState<TransactionsScreen> {
   _Range _range = _Range.month;
   int? _categoryFilter;
   String _search = '';
+  late final TextEditingController _searchCtrl;
+
+  @override
+  void initState() {
+    super.initState();
+    _searchCtrl = TextEditingController();
+  }
+
+  @override
+  void dispose() {
+    _searchCtrl.dispose();
+    super.dispose();
+  }
+
+  /// A named, persisted combination of range/category/search.
+  List<SavedFilter> _savedFilters(String raw) {
+    try {
+      final list = jsonDecode(raw) as List;
+      return [
+        for (final e in list)
+          (
+            name: e['name'] as String,
+            range: (e['range'] as num).toInt(),
+            categoryId: e['categoryId'] as int?,
+          ),
+      ];
+    } catch (_) {
+      return [];
+    }
+  }
+
+  Future<void> _saveCurrentFilter() async {
+    final name = await promptForText(
+      context,
+      title: 'Save this filter',
+      label: 'Filter name',
+      maxLength: 30,
+    );
+    if (name == null) return;
+
+    final raw =
+        ref.read(settingsMapProvider).value?[SettingsRepo.savedFilters] ??
+            '[]';
+    final filters = [
+      for (final f in _savedFilters(raw))
+        {'name': f.name, 'range': f.range, 'categoryId': f.categoryId},
+      {
+        'name': name,
+        'range': _range.index,
+        'categoryId': _categoryFilter,
+      },
+    ];
+    await ref
+        .read(settingsRepoProvider)
+        .set(SettingsRepo.savedFilters, jsonEncode(filters));
+  }
+
+  void _applySavedFilter(SavedFilter f) {
+    setState(() {
+      _range = _Range.values[f.range.clamp(0, _Range.values.length - 1)];
+      _categoryFilter = f.categoryId;
+      _search = '';
+      _searchCtrl.clear();
+    });
+  }
+
+  Future<void> _deleteSavedFilter(SavedFilter f) async {
+    final raw =
+        ref.read(settingsMapProvider).value?[SettingsRepo.savedFilters] ??
+            '[]';
+    final remaining = _savedFilters(raw).where((x) => x != f).toList();
+    await ref.read(settingsRepoProvider).set(
+        SettingsRepo.savedFilters,
+        jsonEncode([
+          for (final x in remaining)
+            {'name': x.name, 'range': x.range, 'categoryId': x.categoryId},
+        ]));
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -57,16 +141,30 @@ class _TransactionsScreenState extends ConsumerState<TransactionsScreen> {
     final byId = {for (final c in cats) c.id: c};
     final sym = ref.watch(currencySymbolProvider);
     final (from, to) = _range.bounds();
+    final saved = _savedFilters(ref
+            .watch(settingsMapProvider)
+            .value?[SettingsRepo.savedFilters] ??
+        '[]');
 
     final repo = ref.watch(transactionsRepoProvider);
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Transactions')),
+      appBar: AppBar(
+        title: const Text('Transactions'),
+        actions: [
+          IconButton(
+            tooltip: 'Save current filter',
+            icon: const Icon(Icons.bookmark_add_outlined),
+            onPressed: _saveCurrentFilter,
+          ),
+        ],
+      ),
       body: Column(
         children: [
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
             child: TextField(
+              controller: _searchCtrl,
               onChanged: (v) => setState(() => _search = v),
               decoration: InputDecoration(
                 hintText: 'Search notes…',
@@ -121,6 +219,27 @@ class _TransactionsScreenState extends ConsumerState<TransactionsScreen> {
               ],
             ),
           ),
+          if (saved.isNotEmpty)
+            SizedBox(
+              height: 48,
+              child: ListView(
+                scrollDirection: Axis.horizontal,
+                padding: const EdgeInsets.symmetric(horizontal: 12),
+                children: [
+                  for (final f in saved)
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 4),
+                      child: InputChip(
+                        avatar:
+                            const Icon(Icons.bookmark_outline, size: 16),
+                        label: Text(f.name),
+                        onPressed: () => _applySavedFilter(f),
+                        onDeleted: () => _deleteSavedFilter(f),
+                      ),
+                    ),
+                ],
+              ),
+            ),
           Expanded(
             child: StreamBuilder<List<Tx>>(
               key: ValueKey('$_search|$_categoryFilter|$_range'),
@@ -161,10 +280,11 @@ class _TransactionsScreenState extends ConsumerState<TransactionsScreen> {
                       ),
                       onDismissed: (_) async {
                         final messenger = ScaffoldMessenger.of(context);
-                        await ref
+                        final joins = await ref
                             .read(transactionsRepoProvider)
                             .delete(tx);
-                        showUndoSnackBar(messenger, ref, tx, wasNew: false);
+                        showUndoSnackBar(messenger, ref, tx,
+                            wasNew: false, joins: joins);
                       },
                       child: TransactionTile(
                         tx: tx,

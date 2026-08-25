@@ -16,6 +16,7 @@ class SettingsRepo {
   static const whatsNewSeenVersion = 'whatsnew.seenVersion';
   static const updateLastCheckedAt = 'update.lastCheckedAt';
   static const updateSkippedVersion = 'update.skippedVersion';
+  static const savedFilters = 'filters.saved'; // JSON array of named filters
   static const lowBalancePct = 'alerts.lowBalancePct'; // % of month income
   static const lowBalanceFloorMinor = 'alerts.lowBalanceFloorMinor';
   static const savingsFloorMinor = 'alerts.savingsFloorMinor';

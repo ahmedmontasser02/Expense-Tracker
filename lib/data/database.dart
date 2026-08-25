@@ -24,6 +24,44 @@ class Transactions extends Table {
   DateTimeColumn get occurredAt => dateTime()();
   DateTimeColumn get createdAt =>
       dateTime().withDefault(currentDateAndTime)();
+  // v3: optional receipt photo stored in app documents.
+  TextColumn get receiptPath => text().nullable()();
+}
+
+/// v3: free-form tags attached to transactions (many-to-many).
+class Tags extends Table {
+  IntColumn get id => integer().autoIncrement()();
+  TextColumn get name => text().withLength(min: 1, max: 40)();
+  DateTimeColumn get createdAt =>
+      dateTime().withDefault(currentDateAndTime)();
+}
+
+class TransactionTags extends Table {
+  IntColumn get id => integer().autoIncrement()();
+  IntColumn get txId => integer().references(Transactions, #id)();
+  IntColumn get tagId => integer().references(Tags, #id)();
+}
+
+/// v3: category-level splits for a single transaction. When splits exist,
+/// the parent transaction's own categoryId is ignored in reports/budgets.
+class TransactionSplits extends Table {
+  IntColumn get id => integer().autoIncrement()();
+  IntColumn get txId => integer().references(Transactions, #id)();
+  IntColumn get categoryId => integer().references(Categories, #id)();
+  IntColumn get amountMinor => integer()();
+  TextColumn get note => text().nullable()();
+}
+
+/// v3: user-defined auto-categorization rules. First matching rule (by
+/// priority, then id) whose pattern occurs in the note wins.
+class Rules extends Table {
+  IntColumn get id => integer().autoIncrement()();
+  TextColumn get pattern => text().withLength(min: 1, max: 80)();
+  IntColumn get categoryId => integer().references(Categories, #id)();
+  IntColumn get priority => integer().withDefault(const Constant(0))();
+  BoolColumn get enabled => boolean().withDefault(const Constant(true))();
+  DateTimeColumn get createdAt =>
+      dateTime().withDefault(currentDateAndTime)();
 }
 
 class Categories extends Table {
@@ -98,6 +136,10 @@ class SettingsEntries extends Table {
     RecurringTemplates,
     ActivityLogs,
     SettingsEntries,
+    Tags,
+    TransactionTags,
+    TransactionSplits,
+    Rules,
   ],
 )
 class AppDatabase extends _$AppDatabase {
@@ -112,7 +154,7 @@ class AppDatabase extends _$AppDatabase {
   }
 
   @override
-  int get schemaVersion => 2;
+  int get schemaVersion => 3;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -121,8 +163,21 @@ class AppDatabase extends _$AppDatabase {
           await _ensureSeedCategories();
         },
         onUpgrade: (m, from, to) async {
-          // v2: richer default catalog; idempotently adds missing names.
-          await _ensureSeedCategories();
+          if (from < 2) {
+            // v2: richer default catalog; idempotently adds missing names.
+            await _ensureSeedCategories();
+          }
+          if (from < 3) {
+            // v3: tags, splits, rules + receiptPath column. Only the NEW
+            // entities are created here — createAll() would attempt to
+            // recreate pre-existing objects such as the budgets index and
+            // fail with "already exists".
+            await m.createTable(tags);
+            await m.createTable(transactionTags);
+            await m.createTable(transactionSplits);
+            await m.createTable(rules);
+            await m.addColumn(transactions, transactions.receiptPath);
+          }
         },
       );
 
@@ -224,3 +279,5 @@ Future<void> migratePlaintextToEncrypted(File dbFile, String key) async {
   await File('${dbFile.path}.enc').rename(dbFile.path);
   await legacyCopy.delete();
 }
+
+

@@ -293,6 +293,12 @@ class TransactionTile extends StatelessWidget {
           maxLines: 1,
           overflow: TextOverflow.ellipsis),
       trailing: Row(mainAxisSize: MainAxisSize.min, children: [
+        if (tx.receiptPath != null)
+          Padding(
+            padding: const EdgeInsets.only(right: 4),
+            child: Icon(Icons.receipt_outlined,
+                size: 16, color: Theme.of(context).colorScheme.outline),
+          ),
         Text('$sign${fmtAmount(symbol, tx.amountMinor)}',
             style: TextStyle(
                 color: color, fontWeight: FontWeight.bold, fontSize: 15)),

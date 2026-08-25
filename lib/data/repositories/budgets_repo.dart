@@ -27,7 +27,8 @@ class BudgetsRepo {
           .get();
 
   /// All active expense categories for [monthAnchor] with optional limits
-  /// and actual spend so far — one reactive query.
+  /// and actual spend so far — one reactive query. Split transactions count
+  /// per split category, plain ones per their own category.
   Stream<List<BudgetRow>> watchMonthOverview(DateTime monthAnchor) {
     final key = DateX.monthKey(monthAnchor);
     final from = DateTime(monthAnchor.year, monthAnchor.month);
@@ -36,9 +37,18 @@ class BudgetsRepo {
       'SELECT c.id AS cid, c.name AS name, c.icon_code AS icon_code, '
           'c.color_value AS color_value, '
           'COALESCE(b.limit_minor, 0) AS limit_minor, '
-          'COALESCE((SELECT SUM(t.amount_minor) FROM transactions t '
-          'WHERE t.category_id = c.id AND t.type = ? '
-          'AND t.occurred_at >= ? AND t.occurred_at < ?), 0) AS spent '
+          'COALESCE((SELECT SUM(portions.amount) FROM ('
+          'SELECT s.amount_minor AS amount FROM transaction_splits s '
+          'JOIN transactions t ON t.id = s.tx_id '
+          'WHERE s.category_id = c.id AND t.type = ? '
+          'AND t.occurred_at >= ? AND t.occurred_at < ? '
+          'UNION ALL '
+          'SELECT t2.amount_minor AS amount FROM transactions t2 '
+          'WHERE t2.category_id = c.id AND t2.type = ? '
+          'AND t2.occurred_at >= ? AND t2.occurred_at < ? '
+          'AND NOT EXISTS ('
+          'SELECT 1 FROM transaction_splits x WHERE x.tx_id = t2.id)'
+          ') portions), 0) AS spent '
           'FROM categories c '
           'LEFT JOIN budgets b ON b.category_id = c.id AND b.month_key = ? '
           'WHERE c.archived = 0 AND c.type = ? '
@@ -47,10 +57,18 @@ class BudgetsRepo {
         Variable.withInt(TxType.expense.index),
         Variable.withDateTime(from),
         Variable.withDateTime(to),
+        Variable.withInt(TxType.expense.index),
+        Variable.withDateTime(from),
+        Variable.withDateTime(to),
         Variable.withString(key),
         Variable.withInt(CategoryType.expense.index),
       ],
-      readsFrom: {_db.categories, _db.budgets, _db.transactions},
+      readsFrom: {
+        _db.categories,
+        _db.budgets,
+        _db.transactions,
+        _db.transactionSplits,
+      },
     ).watch().map((rows) => [
           for (final row in rows)
             (

@@ -12,10 +12,15 @@ import '../../data/repositories/settings_repo.dart';
 import '../../providers/providers.dart';
 import '../../services/diagnostic_logger.dart';
 import '../../services/notification_service.dart';
+import '../../services/update_checker.dart';
+import 'package:package_info_plus/package_info_plus.dart';
 import '../onboarding/country_picker_screen.dart';
 import '../recurring/recurring_screen.dart';
+import '../rules/rules_screen.dart';
 import '../widgets/common.dart';
 /// Currency, alert thresholds, notification preferences and data tools.
+enum _ManualUpdatePhase { confirm, downloading, error }
+
 class SettingsScreen extends ConsumerStatefulWidget {
   const SettingsScreen({super.key});
   @override
@@ -105,6 +110,14 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
             onTap: () => Navigator.of(context).push(
                 MaterialPageRoute(builder: (_) => const RecurringScreen())),
           ),
+          ListTile(
+            leading: const Icon(Icons.auto_awesome_outlined),
+            title: const Text('Auto-categorization rules'),
+            subtitle: const Text('Categorize notes automatically'),
+            trailing: const Icon(Icons.chevron_right),
+            onTap: () => Navigator.of(context).push(
+                MaterialPageRoute(builder: (_) => const RulesScreen())),
+          ),
           SectionHeader('Alert thresholds'),
           SwitchListTile(
             secondary: const Icon(Icons.notifications_outlined),
@@ -149,7 +162,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
               await _rescheduleDaily({...s, SettingsRepo.dailySummaryHour: '$h'});
             },
           ),
-          const           SectionHeader('Data & backups'),
+          const SectionHeader('Data & backups'),
           SwitchListTile(
             secondary: const Icon(Icons.backup_outlined),
             title: const Text('Automatic daily backup'),
@@ -171,6 +184,20 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
             subtitle: const Text(
                 'Replaces current data — restarts the app when done'),
             onTap: () => _restoreFlow(context),
+          ),
+          SectionHeader('App updates'),
+          ListTile(
+            leading: const Icon(Icons.system_update_outlined),
+            title: const Text('Check for updates'),
+            subtitle: const Text(
+                'Looks for a newer release on GitHub and installs it'),
+            trailing: _checkingUpdate
+                ? const SizedBox(
+                    width: 18,
+                    height: 18,
+                    child: CircularProgressIndicator(strokeWidth: 2))
+                : const Icon(Icons.chevron_right),
+            onTap: _checkingUpdate ? null : () => _checkUpdatesManually(context),
           ),
           SectionHeader('Diagnostics'),
           ListTile(
@@ -203,6 +230,98 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   }
   Future<void> _set(String key, String value) =>
       ref.read(settingsRepoProvider).set(key, value);
+
+  bool _checkingUpdate = false;
+  double? _manualProgress;
+  String? _manualError;
+
+  Future<void> _checkUpdatesManually(BuildContext context) async {
+    final messenger = ScaffoldMessenger.of(context);
+    setState(() => _checkingUpdate = true);
+    try {
+      await ref
+          .read(settingsRepoProvider)
+          .set(SettingsRepo.updateLastCheckedAt, DateTime.now().toIso8601String());
+      final info = await UpdateChecker.instance.fetchLatest();
+      final current = (await PackageInfo.fromPlatform()).version;
+      if (!context.mounted) return;
+
+      if (info == null) {
+        messenger.showSnackBar(const SnackBar(
+            content: Text('Could not reach GitHub — try again later')));
+        return;
+      }
+      if (!UpdateChecker.isNewer(info.version, current)) {
+        messenger.showSnackBar(SnackBar(
+            content: Text('You are on the latest version (v$current)')));
+        return;
+      }
+      if (!context.mounted) return;
+
+      // Newer release available — offer download + install with progress.
+      var phase = _ManualUpdatePhase.confirm;
+      await showDialog<void>(
+        context: context,
+        builder: (ctx) => StatefulBuilder(
+          builder: (ctx, setDialog) => AlertDialog(
+            icon: const Icon(Icons.system_update_alt_outlined),
+            title: Text('Update to v${info.version}'),
+            content: switch (phase) {
+              _ManualUpdatePhase.confirm => const Text(
+                  'The new version will be downloaded and the installer '
+                  'will open. Install it to finish updating.'),
+              _ManualUpdatePhase.downloading => Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    LinearProgressIndicator(value: _manualProgress),
+                    const SizedBox(height: 8),
+                    Text(_manualProgress == null
+                        ? 'Downloading…'
+                        : 'Downloading… ${(_manualProgress! * 100).toStringAsFixed(0)}%'),
+                  ],
+                ),
+              _ManualUpdatePhase.error => Text(_manualError ?? 'Download failed'),
+            },
+            actions: [
+              if (phase == _ManualUpdatePhase.confirm)
+                TextButton(
+                    onPressed: () => Navigator.pop(ctx),
+                    child: const Text('Later')),
+              if (phase == _ManualUpdatePhase.confirm)
+                FilledButton(
+                  onPressed: () async {
+                    setDialog(() => phase = _ManualUpdatePhase.downloading);
+                    try {
+                      final path = await UpdateChecker.instance
+                          .downloadApk(info.apkUrl,
+                              onProgress: (received, total) {
+                        if (total != null && total > 0) {
+                          setDialog(() =>
+                              _manualProgress = received / total);
+                        }
+                      });
+                      await UpdateChecker.instance.install(path);
+                    } catch (e) {
+                      _manualError = '$e';
+                      setDialog(() => phase = _ManualUpdatePhase.error);
+                    }
+                  },
+                  child: const Text('Download & install'),
+                ),
+              if (phase == _ManualUpdatePhase.error)
+                FilledButton(
+                    onPressed: () => Navigator.pop(ctx),
+                    child: const Text('Close')),
+            ],
+          ),
+        ),
+      );
+    } catch (e) {
+      messenger.showSnackBar(SnackBar(content: Text('Update check failed: $e')));
+    } finally {
+      if (mounted) setState(() => _checkingUpdate = false);
+    }
+  }
 
   String _prettyLastBackup(String iso) {
     final d = DateTime.tryParse(iso);
@@ -415,4 +534,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     if (mounted) setState(() {});
   }
 }
+
+
+
 

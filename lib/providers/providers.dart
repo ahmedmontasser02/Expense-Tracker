@@ -5,6 +5,8 @@ import '../core/countries.dart';
 import '../core/enums.dart';
 import '../core/format.dart';
 import '../data/database.dart';
+import '../data/repositories/rules_repo.dart';
+import '../data/repositories/tags_repo.dart';
 import '../data/repositories/budgets_repo.dart';
 import '../data/repositories/categories_repo.dart';
 import '../data/repositories/goals_repo.dart';
@@ -50,6 +52,23 @@ final recurringRepoProvider = Provider((ref) => RecurringRepo(
 
 final settingsRepoProvider =
     Provider((ref) => SettingsRepo(ref.watch(databaseProvider)));
+
+final tagsRepoProvider =
+    Provider((ref) => TagsRepo(ref.watch(databaseProvider)));
+
+final rulesRepoProvider =
+    Provider((ref) => RulesRepo(ref.watch(databaseProvider)));
+
+final allTagsProvider = StreamProvider<List<Tag>>(
+    (ref) => ref.watch(tagsRepoProvider).watchAll());
+
+final rulesListProvider = StreamProvider<List<Rule>>(
+    (ref) => ref.watch(rulesRepoProvider).watchAll());
+
+/// Tags attached to one transaction.
+final tagsForTxProvider =
+    StreamProvider.family<List<Tag>, int>(
+        (ref, txId) => ref.watch(tagsRepoProvider).watchTagsForTx(txId));
 
 final alertServiceProvider = Provider(
   (ref) => AlertService(
@@ -146,5 +165,6 @@ final recurringListProvider = StreamProvider<List<RecurringTemplate>>(
 
 final activityLogProvider = StreamProvider<List<ActivityLog>>(
     (ref) => ref.watch(logsRepoProvider).watchRecent());
+
 
 

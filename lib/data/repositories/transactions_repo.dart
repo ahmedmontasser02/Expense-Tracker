@@ -21,6 +21,44 @@ class TransactionsRepo {
 
   AppDatabase get db => _db;
 
+  // ---------- Splits ----------
+
+  /// Replaces the split rows of [txId].
+  Future<void> setSplits(
+      int txId, List<({int categoryId, int amountMinor, String? note})> splits) async {
+    await _db.transaction(() async {
+      await (_db.delete(_db.transactionSplits)
+            ..where((s) => s.txId.equals(txId)))
+          .go();
+      for (final s in splits) {
+        await _db.into(_db.transactionSplits).insert(
+              TransactionSplitsCompanion.insert(
+                txId: txId,
+                categoryId: s.categoryId,
+                amountMinor: s.amountMinor,
+                note: Value(s.note),
+              ),
+            );
+      }
+    });
+  }
+
+  Future<List<TransactionSplit>> splitsForTx(int txId) =>
+      (_db.select(_db.transactionSplits)
+            ..where((s) => s.txId.equals(txId)))
+          .get();
+
+  Stream<List<TransactionSplit>> watchSplitsForTx(int txId) =>
+      (_db.select(_db.transactionSplits)
+            ..where((s) => s.txId.equals(txId)))
+          .watch();
+
+  Future<bool> hasSplits(int txId) async =>
+      await (_db.select(_db.transactionSplits)
+            ..where((s) => s.txId.equals(txId)))
+          .get()
+          .then((rows) => rows.isNotEmpty);
+
   // ---------- Aggregates ----------
 
   /// Balance = income − expenses (all time). Savings deposits/withdrawals
@@ -88,17 +126,41 @@ class TransactionsRepo {
                 _ => 0,
               });
 
-  /// Expense total per categoryId within [from, to).
+  /// Expense total per categoryId within [from, to). Split transactions
+  /// contribute per split category; plain ones per their own category.
   Future<Map<int, int>> expenseByCategory(DateTime from, DateTime to) async {
     final rows = await (_db.select(_db.transactions)
           ..where((t) =>
               t.type.equalsValue(TxType.expense) &
-              t.occurredAt.isBetweenValues(from, to) &
-              t.categoryId.isNotNull()))
+              t.occurredAt.isBetweenValues(from, to)))
         .get();
+    final byTx = await _splitsForRange(from, to);
     final map = <int, int>{};
     for (final r in rows) {
-      map[r.categoryId!] = (map[r.categoryId!] ?? 0) + r.amountMinor;
+      final splits = byTx[r.id];
+      if (splits != null) {
+        for (final s in splits) {
+          map[s.categoryId] = (map[s.categoryId] ?? 0) + s.amountMinor;
+        }
+      } else if (r.categoryId != null) {
+        map[r.categoryId!] = (map[r.categoryId!] ?? 0) + r.amountMinor;
+      }
+    }
+    return map;
+  }
+
+  Future<Map<int, List<TransactionSplit>>> _splitsForRange(
+      DateTime from, DateTime to) async {
+    final query = _db.select(_db.transactionSplits).join([
+      innerJoin(_db.transactions,
+          _db.transactions.id.equalsExp(_db.transactionSplits.txId)),
+    ])
+      ..where(_db.transactions.occurredAt.isBetweenValues(from, to));
+    final rows = await query.get();
+    final map = <int, List<TransactionSplit>>{};
+    for (final row in rows) {
+      final split = row.readTable(_db.transactionSplits);
+      (map[split.txId] ??= []).add(split);
     }
     return map;
   }
@@ -106,14 +168,7 @@ class TransactionsRepo {
   Stream<Map<int, int>> watchExpenseByCategory(
       DateTime from, DateTime to) {
     return _watchRangeQuery(from, to)
-        .map((rows) {
-      final map = <int, int>{};
-      for (final r in rows.where((e) =>
-          e.type == TxType.expense && e.categoryId != null)) {
-        map[r.categoryId!] = (map[r.categoryId!] ?? 0) + r.amountMinor;
-      }
-      return map;
-    });
+        .asyncMap((_) => expenseByCategory(from, to));
   }
 
   MonthSummary _summarize(List<Tx> rows) {
@@ -207,15 +262,33 @@ class TransactionsRepo {
         '${tx.type.label} ${tx.amountMinor}');
   }
 
-  Future<void> delete(Tx tx) async {
-    await (_db.delete(_db.transactions)..where((t) => t.id.equals(tx.id)))
-        .go();
+  /// Deletes a transaction together with its joins; returns them so an
+  /// undo can fully restore the row.
+  Future<({List<TransactionSplit> splits, List<int> tagIds})> delete(
+      Tx tx) async {
+    final splits = await splitsForTx(tx.id);
+    final tagRows = await (_db.select(_db.transactionTags)
+          ..where((j) => j.txId.equals(tx.id)))
+        .get();
+    final tagIds = tagRows.map((j) => j.tagId).toList();
+    await _db.transaction(() async {
+      await (_db.delete(_db.transactionTags)
+            ..where((j) => j.txId.equals(tx.id)))
+          .go();
+      await (_db.delete(_db.transactionSplits)
+            ..where((s) => s.txId.equals(tx.id)))
+          .go();
+      await (_db.delete(_db.transactions)..where((t) => t.id.equals(tx.id)))
+          .go();
+    });
     await _logs.add(LogAction.deleted, 'transaction', tx.id,
         '${tx.type.label} ${tx.amountMinor}');
+    return (splits: splits, tagIds: tagIds);
   }
 
   /// Re-inserts a previously deleted row with its original id (undo).
-  Future<void> restore(Tx tx) async {
+  Future<void> restore(Tx tx,
+      {List<TransactionSplit>? splits, List<int>? tagIds}) async {
     await _db.into(_db.transactions).insert(TransactionsCompanion.insert(
           id: Value(tx.id),
           type: tx.type,
@@ -226,6 +299,25 @@ class TransactionsRepo {
           occurredAt: tx.occurredAt,
           createdAt: Value(tx.createdAt),
         ));
+    if (splits != null && splits.isNotEmpty) {
+      for (final s in splits) {
+        await _db.into(_db.transactionSplits).insert(
+              TransactionSplitsCompanion.insert(
+                txId: tx.id,
+                categoryId: s.categoryId,
+                amountMinor: s.amountMinor,
+                note: Value(s.note),
+              ),
+            );
+      }
+    }
+    if (tagIds != null && tagIds.isNotEmpty) {
+      for (final tagId in tagIds) {
+        await _db.into(_db.transactionTags).insert(
+              TransactionTagsCompanion.insert(txId: tx.id, tagId: tagId),
+            );
+      }
+    }
     await _logs.add(LogAction.created, 'transaction', tx.id,
         'restored ${tx.type.label} ${tx.amountMinor}');
   }
@@ -238,3 +330,5 @@ class TransactionsRepo {
     return id;
   }
 }
+
+

@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.3.0
+- Tags: label transactions your way and manage them under Organize → Tags
+- Category splits: split one expense across categories (reports and
+  budgets follow the splits)
+- Receipts: attach a photo from camera or gallery to any transaction
+- Auto-categorization rules: teach the app that "netflix" means
+  Subscriptions, plus smart suggestions learned from your history
+- Saved filters: bookmark frequently used transaction filters with one tap
+
 ## 1.2.0
 - In-app updates: get notified when a new version is released and install
   it directly from the app

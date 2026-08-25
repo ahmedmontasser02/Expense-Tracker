@@ -187,3 +187,40 @@ class EmptyState extends StatelessWidget {
 
 String fmtAmount(String symbol, int minorUnits) =>
     MoneyFmt.withSymbol(symbol, minorUnits);
+
+/// Small named-input dialog shared by tag/category/filter editors.
+/// Returns the trimmed input, or null when cancelled/empty.
+Future<String?> promptForText(
+  BuildContext context, {
+  required String title,
+  required String label,
+  String? initial,
+  String? helper,
+  int maxLength = 40,
+  String cancelLabel = 'Cancel',
+  String confirmLabel = 'Save',
+}) async {
+  final ctrl = TextEditingController(text: initial);
+  final result = await showDialog<String>(
+    context: context,
+    builder: (ctx) => AlertDialog(
+      title: Text(title),
+      content: TextField(
+        controller: ctrl,
+        autofocus: true,
+        maxLength: maxLength,
+        decoration: InputDecoration(labelText: label, helperText: helper),
+      ),
+      actions: [
+        TextButton(
+            onPressed: () => Navigator.pop(ctx), child: Text(cancelLabel)),
+        FilledButton(
+            onPressed: () => Navigator.pop(ctx, ctrl.text.trim()),
+            child: Text(confirmLabel)),
+      ],
+    ),
+  );
+  ctrl.dispose();
+  final trimmed = result?.trim();
+  return (trimmed == null || trimmed.isEmpty) ? null : trimmed;
+}
