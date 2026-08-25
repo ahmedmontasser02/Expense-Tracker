@@ -12,13 +12,13 @@ import '../../core/format.dart';
 import '../../data/repositories/settings_repo.dart';
 import '../../providers/providers.dart';
 import '../../services/diagnostic_logger.dart';
-import '../../services/notification_service.dart';
 import '../../services/update_checker.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import '../onboarding/country_picker_screen.dart';
 import '../recurring/recurring_screen.dart';
 import '../rules/rules_screen.dart';
 import '../widgets/common.dart';
+import 'alerts_screen.dart';
 /// Currency, alert thresholds, notification preferences and data tools.
 enum _ManualUpdatePhase { confirm, downloading, error }
 
@@ -41,7 +41,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
       body: ListView(
         padding: const EdgeInsets.fromLTRB(16, 8, 16, 96),
         children: [
-          SectionHeader('Appearance'),
+          CapsHeader('Appearance'),
           Card(
             margin: const EdgeInsets.only(bottom: 8),
             child: Padding(
@@ -82,148 +82,144 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
               ),
             ),
           ),
-          SectionHeader('General'),
-          ListTile(
-            leading: Text(
-              ref.watch(selectedCountryProvider)?.flag ?? '🌐',
-              style: const TextStyle(fontSize: 26),
+          CapsHeader('General'),
+          Card(
+            margin: const EdgeInsets.only(bottom: 8),
+            child: Column(children: [
+              ListTile(
+                leading: Text(
+                  ref.watch(selectedCountryProvider)?.flag ?? '🌐',
+                  style: const TextStyle(fontSize: 26),
+                ),
+                title: const Text('Country'),
+                subtitle: Text(
+                    ref.watch(selectedCountryProvider)?.name ?? 'Not selected'),
+                trailing: const Icon(Icons.chevron_right),
+                onTap: () => Navigator.of(context).push(MaterialPageRoute(
+                  builder: (_) => const CountryPickerScreen(),
+                )),
+              ),
+              const Divider(height: 1, indent: 16),
+              ListTile(
+                leading: const Icon(Icons.currency_exchange_outlined),
+                title: const Text('Currency'),
+                subtitle: Text(_currencyLabel(ref)),
+                trailing: const Icon(Icons.edit_outlined, size: 18),
+                onTap: () => _editSymbol(context, ref, s),
+              ),
+              const Divider(height: 1, indent: 16),
+              ListTile(
+                leading: const Icon(Icons.repeat),
+                title: const Text('Recurring transactions'),
+                subtitle: const Text('Manage automatic entries'),
+                trailing: const Icon(Icons.chevron_right),
+                onTap: () => Navigator.of(context).push(
+                    MaterialPageRoute(builder: (_) => const RecurringScreen())),
+              ),
+              const Divider(height: 1, indent: 16),
+              ListTile(
+                leading: const Icon(Icons.auto_awesome_outlined),
+                title: const Text('Auto-categorization rules'),
+                subtitle: const Text('Categorize notes automatically'),
+                trailing: const Icon(Icons.chevron_right),
+                onTap: () => Navigator.of(context).push(
+                    MaterialPageRoute(builder: (_) => const RulesScreen())),
+              ),
+            ]),
+          ),
+          CapsHeader('Alerts & notifications'),
+          Card(
+            margin: const EdgeInsets.only(bottom: 8),
+            child: ListTile(
+              leading: const Icon(Icons.notifications_outlined),
+              title: const Text('Alerts & notifications'),
+              subtitle: const Text(
+                  'Low balance, goals, spending cap and daily digest'),
+              trailing: const Icon(Icons.chevron_right),
+              onTap: () => Navigator.of(context).push(
+                  MaterialPageRoute(builder: (_) => const AlertsScreen())),
             ),
-            title: const Text('Country'),
-            subtitle: Text(
-                ref.watch(selectedCountryProvider)?.name ?? 'Not selected'),
-            trailing: const Icon(Icons.chevron_right),
-            onTap: () => Navigator.of(context).push(MaterialPageRoute(
-              builder: (_) => const CountryPickerScreen(),
-            )),
           ),
-          ListTile(
-            leading: const Icon(Icons.currency_exchange_outlined),
-            title: const Text('Currency'),
-            subtitle: Text(_currencyLabel(ref)),
-            trailing: const Icon(Icons.edit_outlined, size: 18),
-            onTap: () => _editSymbol(context, ref, s),
+          const CapsHeader('Data & backups'),
+          Card(
+            margin: const EdgeInsets.only(bottom: 8),
+            child: Column(children: [
+              SwitchListTile(
+                secondary: const Icon(Icons.backup_outlined),
+                title: const Text('Automatic daily backup'),
+                subtitle: Text(
+                    'Keeps the last 7 backups on this device'
+                    '${s[SettingsRepo.lastBackupKey] != null && s[SettingsRepo.lastBackupKey]!.isNotEmpty ? ' • last: ${_prettyLastBackup(s[SettingsRepo.lastBackupKey]!)}' : ''}'),
+                value: s[SettingsRepo.autoBackupKey] == 'true',
+                onChanged: (v) => _set(SettingsRepo.autoBackupKey, '$v'),
+              ),
+              const Divider(height: 1, indent: 16),
+              ListTile(
+                leading: const Icon(Icons.cloud_sync_outlined),
+                title: const Text('Back up now'),
+                subtitle: const Text('Snapshot the database to device storage'),
+                onTap: () => _backupNow(context),
+              ),
+              const Divider(height: 1, indent: 16),
+              ListTile(
+                leading: const Icon(Icons.restore_outlined),
+                title: const Text('Restore from backup'),
+                subtitle: const Text(
+                    'Replaces current data — restarts the app when done'),
+                onTap: () => _restoreFlow(context),
+              ),
+            ]),
           ),
-          ListTile(
-            leading: const Icon(Icons.repeat),
-            title: const Text('Recurring transactions'),
-            subtitle: const Text('Manage automatic entries'),
-            trailing: const Icon(Icons.chevron_right),
-            onTap: () => Navigator.of(context).push(
-                MaterialPageRoute(builder: (_) => const RecurringScreen())),
+          CapsHeader('App updates'),
+          Card(
+            margin: const EdgeInsets.only(bottom: 8),
+            child: ListTile(
+              leading: const Icon(Icons.system_update_outlined),
+              title: const Text('Check for updates'),
+              subtitle: const Text(
+                  'Looks for a newer release on GitHub and installs it'),
+              trailing: _checkingUpdate
+                  ? const SizedBox(
+                      width: 18,
+                      height: 18,
+                      child: CircularProgressIndicator(strokeWidth: 2))
+                  : const Icon(Icons.chevron_right),
+              onTap: _checkingUpdate ? null : () => _checkUpdatesManually(context),
+            ),
           ),
-          ListTile(
-            leading: const Icon(Icons.auto_awesome_outlined),
-            title: const Text('Auto-categorization rules'),
-            subtitle: const Text('Categorize notes automatically'),
-            trailing: const Icon(Icons.chevron_right),
-            onTap: () => Navigator.of(context).push(
-                MaterialPageRoute(builder: (_) => const RulesScreen())),
+          CapsHeader('Diagnostics'),
+          Card(
+            margin: const EdgeInsets.only(bottom: 8),
+            child: Column(children: [
+              ListTile(
+                leading: const Icon(Icons.bug_report_outlined),
+                title: const Text('Export diagnostic logs'),
+                subtitle: const Text(
+                    'Share a bug report with app info, errors and recent activity'),
+                trailing: const Icon(Icons.ios_share),
+                onTap: () => _exportLogs(context),
+              ),
+              const Divider(height: 1, indent: 16),
+              ListTile(
+                leading: const Icon(Icons.copy_outlined),
+                title: const Text('Copy logs to clipboard'),
+                subtitle: const Text('Paste into a bug report or message'),
+                trailing: const Icon(Icons.chevron_right),
+                onTap: () => _copyLogs(context),
+              ),
+            ]),
           ),
-          SectionHeader('Alert thresholds'),
-          SwitchListTile(
-            secondary: const Icon(Icons.notifications_outlined),
-            title: const Text('Notifications'),
-            subtitle: const Text('Low balance, savings and budget warnings'),
-            value: s[SettingsRepo.notificationsEnabled] == 'true',
-            onChanged: (v) => _set(SettingsRepo.notificationsEnabled, '$v'),
-          ),
-          _percentTile(context, 'Low balance (% of monthly income)',
-              SettingsRepo.lowBalancePct, s),
-          _moneyTile(context, 'Low balance absolute floor',
-              SettingsRepo.lowBalanceFloorMinor, s),
-          _moneyTile(context, 'Savings floor', SettingsRepo.savingsFloorMinor, s),
-          _percentTile(context,
-              'Budget warning at (% of category limit)', SettingsRepo.budgetWarnPct, s),
-          _percentTile(context,
-              'Monthly cap warning at (%)', SettingsRepo.monthCapWarnPct, s),
-          _moneyTile(
-              context,
-              'Monthly spending cap (0 = off)',
-              SettingsRepo.monthlyCapMinor,
-              s),
-          SectionHeader('Daily summary'),
-          SwitchListTile(
-            secondary: const Icon(Icons.today_outlined),
-            title: const Text('Daily reminder'),
-            subtitle: const Text('A once-a-day nudge with your numbers'),
-            value: s[SettingsRepo.dailySummaryEnabled] == 'true',
-            onChanged: (v) async {
-              await _set(SettingsRepo.dailySummaryEnabled, '$v');
-              if (mounted) await _rescheduleDaily(s);
-            },
-          ),
-          _numberTile(
-            context,
-            title: 'Reminder hour (0–23)',
-            current:
-                int.tryParse(s[SettingsRepo.dailySummaryHour] ?? '20') ?? 20,
-            onSave: (v) async {
-              final h = v.clamp(0, 23);
-              await _set(SettingsRepo.dailySummaryHour, '$h');
-              await _rescheduleDaily({...s, SettingsRepo.dailySummaryHour: '$h'});
-            },
-          ),
-          const SectionHeader('Data & backups'),
-          SwitchListTile(
-            secondary: const Icon(Icons.backup_outlined),
-            title: const Text('Automatic daily backup'),
-            subtitle: Text(
-                'Keeps the last 7 backups on this device'
-                '${s[SettingsRepo.lastBackupKey] != null && s[SettingsRepo.lastBackupKey]!.isNotEmpty ? ' • last: ${_prettyLastBackup(s[SettingsRepo.lastBackupKey]!)}' : ''}'),
-            value: s[SettingsRepo.autoBackupKey] == 'true',
-            onChanged: (v) => _set(SettingsRepo.autoBackupKey, '$v'),
-          ),
-          ListTile(
-            leading: const Icon(Icons.cloud_sync_outlined),
-            title: const Text('Back up now'),
-            subtitle: const Text('Snapshot the database to device storage'),
-            onTap: () => _backupNow(context),
-          ),
-          ListTile(
-            leading: const Icon(Icons.restore_outlined),
-            title: const Text('Restore from backup'),
-            subtitle: const Text(
-                'Replaces current data — restarts the app when done'),
-            onTap: () => _restoreFlow(context),
-          ),
-          SectionHeader('App updates'),
-          ListTile(
-            leading: const Icon(Icons.system_update_outlined),
-            title: const Text('Check for updates'),
-            subtitle: const Text(
-                'Looks for a newer release on GitHub and installs it'),
-            trailing: _checkingUpdate
-                ? const SizedBox(
-                    width: 18,
-                    height: 18,
-                    child: CircularProgressIndicator(strokeWidth: 2))
-                : const Icon(Icons.chevron_right),
-            onTap: _checkingUpdate ? null : () => _checkUpdatesManually(context),
-          ),
-          SectionHeader('Diagnostics'),
-          ListTile(
-            leading: const Icon(Icons.bug_report_outlined),
-            title: const Text('Export diagnostic logs'),
-            subtitle: const Text(
-                'Share a bug report with app info, errors and recent activity'),
-            trailing: const Icon(Icons.ios_share),
-            onTap: () => _exportLogs(context),
-          ),
-          ListTile(
-            leading: const Icon(Icons.copy_outlined),
-            title: const Text('Copy logs to clipboard'),
-            subtitle: const Text('Paste into a bug report or message'),
-            trailing: const Icon(Icons.chevron_right),
-            onTap: () => _copyLogs(context),
-          ),
-          SectionHeader('About'),
-          const ListTile(
-            leading: Icon(Icons.info_outline),
-            title: Text('Expense Tracker'),
-            subtitle:
-                Text('Local-only expense, budget and savings tracker.\n'
-                    'All data stays on this device.'),
-            isThreeLine: true,
+          CapsHeader('About'),
+          const Card(
+            margin: EdgeInsets.only(bottom: 8),
+            child: ListTile(
+              leading: Icon(Icons.info_outline),
+              title: Text('Expense Tracker'),
+              subtitle:
+                  Text('Local-only expense, budget and savings tracker.\n'
+                      'All data stays on this device.'),
+              isThreeLine: true,
+            ),
           ),
         ],
       ),
@@ -469,88 +465,6 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
       await _set(SettingsRepo.currencySymbol, value);
       MoneyFmt.symbol = value;
     }
-  }
-  Future<void> _rescheduleDaily(Map<String, String> s) async {
-    final enabled = s[SettingsRepo.dailySummaryEnabled] == 'true';
-    final hour = int.tryParse(s[SettingsRepo.dailySummaryHour] ?? '20') ?? 20;
-    if (!enabled) {
-      await NotificationService.instance.cancelDailySummary();
-      return;
-    }
-    final balance = ref.read(balanceProvider).value;
-    final pot = ref.read(savingsPotProvider).value;
-    final sym = ref.watch(currencySymbolProvider);
-    await NotificationService.instance.scheduleDailySummary(
-      hour,
-      'Daily money check-in',
-      'Balance: ${balance == null ? '—' : MoneyFmt.withSymbol(sym, balance)} • '
-          'Savings: ${pot == null ? '—' : MoneyFmt.withSymbol(sym, pot)}',
-    );
-  }
-  Widget _percentTile(
-      BuildContext context, String title, String key, Map<String, String> s) {
-    return ListTile(
-      leading: const Icon(Icons.percent),
-      title: Text(title),
-      trailing: Text('${s[key] ?? '0'}%',
-          style: Theme.of(context).textTheme.titleMedium),
-      onTap: () => _prompt(context, title, s[key] ?? '',
-          text: true,
-          onSave: (v) => _set(key, '${int.tryParse(v)?.clamp(1, 100) ?? 100}')),
-    );
-  }
-  Widget _moneyTile(BuildContext context, String title, String key,
-      Map<String, String> s) {
-    final minor = int.tryParse(s[key] ?? '0') ?? 0;
-    return ListTile(
-      leading: const Icon(Icons.payments_outlined),
-      title: Text(title),
-      trailing: Text(MoneyFmt.withSymbol(ref.watch(currencySymbolProvider), minor),
-          style: Theme.of(context).textTheme.titleMedium),
-      onTap: () => _prompt(context, title, minor == 0 ? '' : (minor / 100).toStringAsFixed(2),
-          text: true,
-          onSave: (v) => _set(key, '${MoneyFmt.parseToMinorUnits(v)}')),
-    );
-  }
-  Widget _numberTile(BuildContext context,
-      {required String title,
-      required int current,
-      required Future<void> Function(int) onSave}) {
-    return ListTile(
-      leading: const Icon(Icons.schedule),
-      title: Text(title),
-      trailing: Text('$current:00',
-          style: Theme.of(context).textTheme.titleMedium),
-      onTap: () => _prompt(context, title, '$current',
-          text: true, onSave: (v) => onSave(int.tryParse(v) ?? current)),
-    );
-  }
-  Future<void> _prompt(BuildContext context, String title, String initial,
-      {required bool text, required Future<void> Function(String) onSave}) async {
-    final ctrl = TextEditingController(text: initial);
-    final ok = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: Text(title),
-        content: TextField(
-          controller: ctrl,
-          autofocus: true,
-          keyboardType: TextInputType.text,
-        ),
-        actions: [
-          TextButton(
-              onPressed: () => Navigator.pop(ctx, false),
-              child: const Text('Cancel')),
-          FilledButton(
-              onPressed: () => Navigator.pop(ctx, true),
-              child: const Text('Save')),
-        ],
-      ),
-    );
-    final value = ctrl.text;
-    WidgetsBinding.instance.addPostFrameCallback((_) => ctrl.dispose());
-    if (ok == true) await onSave(value);
-    if (mounted) setState(() {});
   }
 }
 

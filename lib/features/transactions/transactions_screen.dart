@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/format.dart';
+import '../../core/theme.dart';
 import '../../data/database.dart';
 import '../../data/repositories/settings_repo.dart';
 import '../../providers/providers.dart';
@@ -149,16 +150,7 @@ class _TransactionsScreenState extends ConsumerState<TransactionsScreen> {
     final repo = ref.watch(transactionsRepoProvider);
 
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Transactions'),
-        actions: [
-          IconButton(
-            tooltip: 'Save current filter',
-            icon: const Icon(Icons.bookmark_add_outlined),
-            onPressed: _saveCurrentFilter,
-          ),
-        ],
-      ),
+      appBar: AppBar(title: const Text('Activity')),
       body: Column(
         children: [
           Padding(
@@ -169,9 +161,21 @@ class _TransactionsScreenState extends ConsumerState<TransactionsScreen> {
               decoration: InputDecoration(
                 hintText: 'Search notes…',
                 prefixIcon: const Icon(Icons.search),
+                suffixIcon: IconButton(
+                  tooltip: 'Save current filter',
+                  icon: const Icon(Icons.bookmark_add_outlined),
+                  onPressed: _saveCurrentFilter,
+                ),
                 isDense: true,
                 border: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(24)),
+                enabledBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(24)),
+                focusedBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(24),
+                    borderSide: BorderSide(
+                        color: Theme.of(context).colorScheme.primary,
+                        width: 1.6)),
               ),
             ),
           ),
@@ -258,40 +262,61 @@ class _TransactionsScreenState extends ConsumerState<TransactionsScreen> {
                   return const EmptyState('Nothing here yet',
                       icon: Icons.receipt_long_outlined);
                 }
+                // Group by calendar day for the mockup's day sections.
+                final days = <DateTime, List<Tx>>{};
+                for (final tx in rows) {
+                  days
+                      .putIfAbsent(DateX.startOfDay(tx.occurredAt), () => [])
+                      .add(tx);
+                }
                 return ListView.builder(
-                  padding: const EdgeInsets.only(bottom: 96),
-                  itemCount: rows.length,
+                  padding: const EdgeInsets.fromLTRB(16, 4, 16, 96),
+                  itemCount: days.length,
                   itemBuilder: (context, i) {
-                    final tx = rows[i];
-                    return Dismissible(
-                      key: ValueKey('tx-${tx.id}'),
-                      direction: DismissDirection.endToStart,
-                      background: Container(
-                        alignment: Alignment.centerRight,
-                        padding: const EdgeInsets.only(right: 24),
-                        margin: const EdgeInsets.symmetric(
-                            horizontal: 16, vertical: 2),
-                        decoration: BoxDecoration(
-                          color: Colors.red,
-                          borderRadius: BorderRadius.circular(16),
+                    final day = days.keys.elementAt(i);
+                    final txs = days[day]!;
+                    return Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        CapsHeader(_dayLabel(day),
+                            padding: const EdgeInsets.only(top: 14, bottom: 6)),
+                        Card(
+                          margin: EdgeInsets.zero,
+                          child: Column(
+                            children: [
+                              for (final tx in txs)
+                                Dismissible(
+                                  key: ValueKey('tx-${tx.id}'),
+                                  direction: DismissDirection.endToStart,
+                                  background: Container(
+                                    alignment: Alignment.centerRight,
+                                    padding:
+                                        const EdgeInsets.only(right: 24),
+                                    color: AppTheme.expenseColor(context),
+                                    child: const Icon(Icons.delete_outline,
+                                        color: Colors.white, size: 28),
+                                  ),
+                                  onDismissed: (_) async {
+                                    final messenger =
+                                        ScaffoldMessenger.of(context);
+                                    final joins = await ref
+                                        .read(transactionsRepoProvider)
+                                        .delete(tx);
+                                    showUndoSnackBar(messenger, ref, tx,
+                                        wasNew: false, joins: joins);
+                                  },
+                                  child: TransactionTile(
+                                    tx: tx,
+                                    category: byId[tx.categoryId],
+                                    symbol: sym,
+                                    onTap: () =>
+                                        openTransactionEditor(context, ref, tx),
+                                  ),
+                                ),
+                            ],
+                          ),
                         ),
-                        child: const Icon(Icons.delete_outline,
-                            color: Colors.white, size: 28),
-                      ),
-                      onDismissed: (_) async {
-                        final messenger = ScaffoldMessenger.of(context);
-                        final joins = await ref
-                            .read(transactionsRepoProvider)
-                            .delete(tx);
-                        showUndoSnackBar(messenger, ref, tx,
-                            wasNew: false, joins: joins);
-                      },
-                      child: TransactionTile(
-                        tx: tx,
-                        category: byId[tx.categoryId],
-                        symbol: sym,
-                        onTap: () => openTransactionEditor(context, ref, tx),
-                      ),
+                      ],
                     );
                   },
                 );
@@ -301,5 +326,21 @@ class _TransactionsScreenState extends ConsumerState<TransactionsScreen> {
         ],
       ),
     );
+  }
+
+  static const _weekdays = [
+    'MONDAY', 'TUESDAY', 'WEDNESDAY', 'THURSDAY', 'FRIDAY', 'SATURDAY', 'SUNDAY',
+  ];
+  static const _months = [
+    'JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN',
+    'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC',
+  ];
+
+  /// "TODAY", "YESTERDAY" or "MONDAY, OCT 21" style section labels.
+  String _dayLabel(DateTime d) {
+    final today = DateX.startOfDay(DateTime.now());
+    if (d == today) return 'TODAY';
+    if (d == today.subtract(const Duration(days: 1))) return 'YESTERDAY';
+    return '${_weekdays[d.weekday - 1]}, ${_months[d.month - 1]} ${d.day}';
   }
 }

@@ -369,20 +369,57 @@ class _TransactionEditorScreenState
                       : TxType.savingsWithdrawal),
             ),
           ],
-          const SizedBox(height: 16),
+          const SizedBox(height: 20),
           TextField(
             controller: _amountCtrl,
             keyboardType:
                 const TextInputType.numberWithOptions(decimal: true),
+            textAlign: TextAlign.center,
+            style: Theme.of(context)
+                .textTheme
+                .displayMedium
+                ?.copyWith(fontWeight: FontWeight.w800),
             inputFormatters: [
               FilteringTextInputFormatter.allow(RegExp(r'^\d*\.?\d{0,2}')),
             ],
             decoration: InputDecoration(
-              labelText: 'Amount',
+              filled: false,
+              border: InputBorder.none,
+              enabledBorder: InputBorder.none,
+              focusedBorder: InputBorder.none,
+              hintText: '0.00',
+              hintStyle: TextStyle(
+                  color: Theme.of(context)
+                      .colorScheme
+                      .onSurfaceVariant
+                      .withValues(alpha: .4)),
               prefixText: '${ref.watch(currencySymbolProvider)} ',
+              prefixStyle: Theme.of(context)
+                  .textTheme
+                  .displayMedium
+                  ?.copyWith(
+                      fontWeight: FontWeight.w800,
+                      color: Theme.of(context)
+                          .colorScheme
+                          .onSurfaceVariant
+                          .withValues(alpha: .4)),
             ),
           ),
-          const SizedBox(height: 16),
+          Center(
+            child: Container(
+              width: 180,
+              height: 3,
+              decoration: BoxDecoration(
+                color: Theme.of(context)
+                    .colorScheme
+                    .primary
+                    .withValues(alpha: .5),
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+          ),
+          CapsHeader('Category',
+              padding: const EdgeInsets.only(top: 20, bottom: 6)),
           AnimatedSwitcher(
             duration: const Duration(milliseconds: 250),
             child: _kind == _Kind.savings
@@ -418,11 +455,15 @@ class _TransactionEditorScreenState
             ),
           ],
           const SizedBox(height: 16),
+          CapsHeader('Note',
+              padding: const EdgeInsets.only(top: 16, bottom: 6)),
           TextField(
             controller: _noteCtrl,
             textCapitalization: TextCapitalization.sentences,
+            minLines: 2,
+            maxLines: 4,
             decoration:
-                const InputDecoration(labelText: 'Note (what was it for?)'),
+                const InputDecoration(hintText: 'Add a description…'),
           ),
           const SizedBox(height: 16),
           _TagsSection(
@@ -459,14 +500,29 @@ class _TransactionEditorScreenState
             onAttach: _attachReceipt,
             onRemove: () => setState(() => _receiptPath = null),
           ),
-          const SizedBox(height: 8),
-          Card(
-            child: ListTile(
-              leading: const Icon(Icons.calendar_today_outlined),
-              title: const Text('Date'),
-              subtitle: Text(DateX.prettyDate(_date)),
-              trailing: const Icon(Icons.chevron_right),
-              onTap: _pickDate,
+          const SizedBox(height: 16),
+          CapsHeader('Date',
+              padding: const EdgeInsets.only(top: 8, bottom: 6)),
+          InkWell(
+            borderRadius: BorderRadius.circular(12),
+            onTap: _pickDate,
+            child: Container(
+              padding:
+                  const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+              decoration: BoxDecoration(
+                color: Theme.of(context).inputDecorationTheme.fillColor,
+                border: Border.fromBorderSide(BorderSide(
+                    color: Theme.of(context).colorScheme.outlineVariant)),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Row(children: [
+                Expanded(
+                  child: Text(DateX.prettyDate(_date),
+                      style: Theme.of(context).textTheme.bodyLarge),
+                ),
+                Icon(Icons.calendar_month_outlined,
+                    size: 20, color: Theme.of(context).colorScheme.primary),
+              ]),
             ),
           ),
           const SizedBox(height: 24),
@@ -478,7 +534,7 @@ class _TransactionEditorScreenState
                     height: 18,
                     child: CircularProgressIndicator(strokeWidth: 2))
                 : const Icon(Icons.check),
-            label: Text(_editing ? 'Save Changes' : 'Add Transaction'),
+            label: Text(_editing ? 'Save Changes' : 'Save Transaction'),
           ),
         ],
       ),
@@ -503,8 +559,8 @@ class _TagsSection extends ConsumerWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text('Tags', style: Theme.of(context).textTheme.titleSmall),
-        const SizedBox(height: 8),
+        CapsHeader('Tags',
+            padding: const EdgeInsets.only(top: 16, bottom: 8)),
         Wrap(
           spacing: 8,
           runSpacing: 4,
@@ -649,47 +705,64 @@ class _ReceiptSection extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(8),
-        child: Column(children: [
-          Row(children: [
-            const Icon(Icons.receipt_long_outlined),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Text(path == null ? 'Receipt' : 'Receipt attached'),
+    final accent = Theme.of(context).colorScheme.primary;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        CapsHeader('Receipt',
+            padding: const EdgeInsets.only(top: 16, bottom: 2)),
+        Row(children: [
+          PopupMenuButton<String>(
+            padding: EdgeInsets.zero,
+            onSelected: (v) => onAttach(fromCamera: v == 'camera'),
+            itemBuilder: (_) => const [
+              PopupMenuItem(
+                  value: 'camera',
+                  child: ListTile(
+                      contentPadding: EdgeInsets.zero,
+                      leading: Icon(Icons.photo_camera_outlined),
+                      title: Text('Camera'))),
+              PopupMenuItem(
+                  value: 'gallery',
+                  child: ListTile(
+                      contentPadding: EdgeInsets.zero,
+                      leading: Icon(Icons.photo_outlined),
+                      title: Text('Gallery'))),
+            ],
+            child: Padding(
+              padding: const EdgeInsets.symmetric(vertical: 8),
+              child: Row(mainAxisSize: MainAxisSize.min, children: [
+                Icon(
+                    path == null
+                        ? Icons.add_photo_alternate_outlined
+                        : Icons.receipt_long_outlined,
+                    size: 18,
+                    color: accent),
+                const SizedBox(width: 6),
+                Text(path == null ? 'Attach Receipt' : 'Replace Receipt',
+                    style: Theme.of(context)
+                        .textTheme
+                        .labelLarge
+                        ?.copyWith(color: accent)),
+              ]),
             ),
-            PopupMenuButton<String>(
-              onSelected: (v) => onAttach(fromCamera: v == 'camera'),
-              itemBuilder: (_) => const [
-                PopupMenuItem(
-                    value: 'camera',
-                    child: ListTile(
-                        leading: Icon(Icons.photo_camera_outlined),
-                        title: Text('Camera'))),
-                PopupMenuItem(
-                    value: 'gallery',
-                    child: ListTile(
-                        leading: Icon(Icons.photo_outlined),
-                        title: Text('Gallery'))),
-              ],
-            ),
-            if (path != null)
-              IconButton(icon: const Icon(Icons.delete_outline), onPressed: onRemove),
-          ]),
-          if (path != null && File(path!).existsSync())
-            Padding(
-              padding: const EdgeInsets.only(top: 8),
-              child: ClipRRect(
-                borderRadius: BorderRadius.circular(12),
-                child: ConstrainedBox(
-                  constraints: const BoxConstraints(maxHeight: 220),
-                  child: Image.file(File(path!), fit: BoxFit.cover),
-                ),
+          ),
+          const Spacer(),
+          if (path != null)
+            TextButton(onPressed: onRemove, child: const Text('Remove')),
+        ]),
+        if (path != null && File(path!).existsSync())
+          Padding(
+            padding: const EdgeInsets.only(top: 4),
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(12),
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxHeight: 220),
+                child: Image.file(File(path!), fit: BoxFit.cover),
               ),
             ),
-        ]),
-      ),
+          ),
+      ],
     );
   }
 }

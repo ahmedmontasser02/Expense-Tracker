@@ -176,6 +176,10 @@ class _PeriodSelector extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final border = BorderSide(
+        color: Theme.of(context).brightness == Brightness.light
+            ? const Color(0xFFE2E8F0)
+            : const Color(0xFF262637));
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
       child: Row(
@@ -186,42 +190,33 @@ class _PeriodSelector extends StatelessWidget {
             icon: const Icon(Icons.chevron_left),
           ),
           Expanded(
-            child: Center(
-              child: InkWell(
-                borderRadius: BorderRadius.circular(24),
-                onTap: onPick,
-                child: Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                  decoration: BoxDecoration(
-                    color: Theme.of(context).colorScheme.secondaryContainer,
-                    borderRadius: BorderRadius.circular(24),
-                  ),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(Icons.calendar_month_outlined,
-                          size: 18,
-                          color: Theme.of(context)
-                              .colorScheme
-                              .onSecondaryContainer),
-                      const SizedBox(width: 8),
-                      Text(label,
+            child: InkWell(
+              borderRadius: BorderRadius.circular(12),
+              onTap: onPick,
+              child: Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                decoration: BoxDecoration(
+                  color: Theme.of(context).cardTheme.color,
+                  border: Border.fromBorderSide(border),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Flexible(
+                      child: Text(label,
                           style: Theme.of(context)
                               .textTheme
                               .titleSmall
-                              ?.copyWith(
-                                  fontWeight: FontWeight.bold,
-                                  color: Theme.of(context)
-                                      .colorScheme
-                                      .onSecondaryContainer)),
-                      const SizedBox(width: 4),
-                      Icon(Icons.arrow_drop_down,
-                          color: Theme.of(context)
-                              .colorScheme
-                              .onSecondaryContainer),
-                    ],
-                  ),
+                              ?.copyWith(fontWeight: FontWeight.w700)),
+                    ),
+                    const SizedBox(width: 6),
+                    Icon(Icons.calendar_month_outlined,
+                        size: 18,
+                        color: Theme.of(context).colorScheme.primary),
+                  ],
                 ),
               ),
             ),
@@ -372,48 +367,71 @@ class _TotalsRow extends StatelessWidget {
       if (r.type == TxType.expense) expense += r.amountMinor;
     }
     final net = income - expense;
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.spaceAround,
+    return Column(
+      children: [
+        Row(
           children: [
             Expanded(
-              child: _total(context, 'Income', fmtAmount(symbol, income),
-                  AppTheme.incomeColor(context)),
+              child: StatCard(
+                label: 'Income',
+                value: fmtAmount(symbol, income),
+                color: AppTheme.incomeColor(context),
+                icon: Icons.south_west,
+              ),
             ),
+            const SizedBox(width: 8),
             Expanded(
-              child: _total(context, 'Spent', fmtAmount(symbol, expense),
-                  AppTheme.expenseColor(context)),
-            ),
-            Expanded(
-              child: _total(
-                  context,
-                  'Net',
-                  fmtAmount(symbol, net),
-                  net >= 0
-                      ? AppTheme.incomeColor(context)
-                      : Colors.red),
+              child: StatCard(
+                label: 'Spent',
+                value: fmtAmount(symbol, expense),
+                color: AppTheme.expenseColor(context),
+                icon: Icons.north_east,
+              ),
             ),
           ],
         ),
-      ),
+        const SizedBox(height: 8),
+        Card(
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+            child: Row(
+              children: [
+                Container(
+                  width: 34,
+                  height: 34,
+                  decoration: BoxDecoration(
+                    color: Theme.of(context)
+                        .colorScheme
+                        .onSurfaceVariant
+                        .withValues(alpha: .12),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: Icon(Icons.account_balance_wallet_outlined,
+                      size: 18, color: Theme.of(context).colorScheme.onSurface),
+                ),
+                const SizedBox(width: 12),
+                Text('NET CASHFLOW',
+                    style: AppTheme.labelCaps(context)),
+                const Spacer(),
+                FittedBox(
+                  fit: BoxFit.scaleDown,
+                  child: Text(fmtAmount(symbol, net),
+                      style: Theme.of(context)
+                          .textTheme
+                          .titleMedium
+                          ?.copyWith(
+                              fontWeight: FontWeight.w800,
+                              color: net >= 0
+                                  ? AppTheme.incomeColor(context)
+                                  : AppTheme.expenseColor(context))),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ],
     );
   }
-
-  Widget _total(BuildContext c, String label, String value, Color color) =>
-      Column(children: [
-        Text(label, style: Theme.of(c).textTheme.bodySmall),
-        FittedBox(
-          fit: BoxFit.scaleDown,
-          child: Text(value,
-              maxLines: 1,
-              style: Theme.of(c)
-                  .textTheme
-                  .titleMedium
-                  ?.copyWith(fontWeight: FontWeight.bold, color: color)),
-        ),
-      ]);
 }
 
 /// Bars over the period's natural buckets (Month shows per-day;

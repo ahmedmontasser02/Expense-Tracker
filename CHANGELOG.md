@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.4.0
+- Visual redesign: Light = Fortress Finance (teal + paper, Hanken Grotesk / Inter / JetBrains Mono); Dark = Neon Tokyo (near-black with pink/cyan/yellow glows, Sora / Inter / Space Grotesk)
+- Bundled variable fonts and per-mode theme (semantic income/spent/saved, balance gradient, bordered cards, mono caps labels, glows)
+- Dashboard: gradient balance card with glow, centered stat cards, plan preview cards (budgets + goals), refined transaction tiles with neutral expense amounts
+- Editor: big centered amount field with underline, caps section labels, outlined date field, polished receipt and tags, updated save action
+- Activity: day-grouped transaction list with CapsHeader date groups and refined search
+- Reports: semantic stat/charge colors, NET CASHFLOW card, preserved bar label and width fixes
+- Settings: grouped cards with CapsHeader sections; alert thresholds moved to a dedicated Alerts & notifications screen
+- New Alerts & notifications screen: master toggle, low balance (floor + %), goals & budgets (savings floor + budget warning slider), monthly cap (limit + warning slider), daily digest with delivery time
+
 ## 1.3.1
 - Fixed: update checker and downloads failed in installed (release) builds —
   the app was missing the INTERNET permission

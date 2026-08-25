@@ -2,8 +2,9 @@ import 'package:flutter/material.dart';
 
 import '../../core/category_presets.dart';
 import '../../core/format.dart';
+import '../../core/theme.dart';
 
-/// Colored circle with a preset icon for categories/goals.
+/// Colored rounded-square tile with a preset icon for categories/goals.
 class CategoryIcon extends StatelessWidget {
   const CategoryIcon(
       {super.key, required this.iconCode, this.colorValue, this.size = 40});
@@ -14,15 +15,25 @@ class CategoryIcon extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return CircleAvatar(
-      radius: size / 2,
-      backgroundColor: Color(colorValue ?? 0xFF546E7A).withValues(alpha: .18),
+    final color = Color(colorValue ?? 0xFF546E7A);
+    return Container(
+      width: size,
+      height: size,
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: Theme.of(context).brightness ==
+                Brightness.light
+            ? .16
+            : .22),
+        borderRadius: BorderRadius.circular(size * .3),
+      ),
       child: Icon(IconPresets.of(iconCode) ?? Icons.more_horiz,
-          size: size * .55, color: Color(colorValue ?? 0xFF546E7A)),
+          size: size * .52, color: color),
     );
   }
 }
 
+/// Large display-font section title with an optional mono-caps trailing link
+/// (e.g. "Plan  RECURRING").
 class SectionHeader extends StatelessWidget {
   const SectionHeader(this.title, {super.key, this.trailing});
 
@@ -34,14 +45,44 @@ class SectionHeader extends StatelessWidget {
     return Padding(
       padding: const EdgeInsets.only(top: 20, bottom: 8),
       child: Row(
+        crossAxisAlignment: CrossAxisAlignment.end,
         children: [
-          Text(title,
-              style: Theme.of(context)
-                  .textTheme
-                  .titleMedium
-                  ?.copyWith(fontWeight: FontWeight.bold)),
+          Text(title, style: Theme.of(context).textTheme.headlineSmall),
           const Spacer(),
           ?trailing,
+        ],
+      ),
+    );
+  }
+}
+
+/// Small mono-caps eyebrow label with a left accent bar
+/// (e.g. "| TODAY, OCT 24" or settings section headers).
+class CapsHeader extends StatelessWidget {
+  const CapsHeader(this.title, {super.key, this.color, this.padding});
+
+  final String title;
+  final Color? color;
+  final EdgeInsetsGeometry? padding;
+
+  @override
+  Widget build(BuildContext context) {
+    final accent = color ?? Theme.of(context).colorScheme.primary;
+    return Padding(
+      padding: padding ?? const EdgeInsets.only(top: 20, bottom: 8),
+      child: Row(
+        children: [
+          Container(
+            width: 3,
+            height: 14,
+            decoration: BoxDecoration(
+              color: accent,
+              borderRadius: BorderRadius.circular(2),
+            ),
+          ),
+          const SizedBox(width: 8),
+          Text(title.toUpperCase(),
+              style: AppTheme.labelCaps(context, color: accent)),
         ],
       ),
     );
@@ -54,39 +95,44 @@ class StatCard extends StatelessWidget {
     required this.label,
     required this.value,
     required this.color,
-    required this.icon,
+    this.icon,
   });
 
   final String label;
   final String value;
   final Color color;
-  final IconData icon;
+  final IconData? icon;
 
   @override
   Widget build(BuildContext context) {
     return Card(
       child: Padding(
-        padding: const EdgeInsets.all(12),
+        padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 8),
         child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
           mainAxisSize: MainAxisSize.min,
           children: [
-            Row(children: [
-              Icon(icon, size: 16, color: color),
-              const SizedBox(width: 6),
-              Expanded(
-                child: Text(label,
-                    overflow: TextOverflow.ellipsis,
-                    style: Theme.of(context).textTheme.bodySmall),
-              ),
-            ]),
-            const SizedBox(height: 6),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                if (icon != null) ...[
+                  Icon(icon, size: 14, color: color),
+                  const SizedBox(width: 5),
+                ],
+                Flexible(
+                  child: Text(label.toUpperCase(),
+                      overflow: TextOverflow.ellipsis,
+                      style: AppTheme.labelCaps(context)),
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
             FittedBox(
+              fit: BoxFit.scaleDown,
               child: Text(value,
                   style: Theme.of(context)
                       .textTheme
                       .titleMedium
-                      ?.copyWith(fontWeight: FontWeight.bold, color: color)),
+                      ?.copyWith(fontWeight: FontWeight.w800, color: color)),
             ),
           ],
         ),
@@ -110,10 +156,10 @@ class FillBar extends StatelessWidget {
       duration: const Duration(milliseconds: 350),
       curve: Curves.easeOutCubic,
       builder: (context, value, _) => ClipRRect(
-        borderRadius: BorderRadius.circular(6),
+        borderRadius: BorderRadius.circular(2),
         child: LinearProgressIndicator(
           value: value,
-          minHeight: 8,
+          minHeight: 4,
           backgroundColor:
               Theme.of(context).colorScheme.surfaceContainerHighest,
           valueColor: AlwaysStoppedAnimation(fraction > 1 ? Colors.red : color),

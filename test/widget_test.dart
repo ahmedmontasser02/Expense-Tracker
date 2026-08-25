@@ -32,9 +32,9 @@ void main() {
     await tester.pump(const Duration(milliseconds: 100));
 
     expect(find.byType(DashboardScreen), findsOneWidget);
-    expect(find.textContaining('Total Balance'), findsWidgets);
+    expect(find.textContaining('TOTAL BALANCE'), findsWidgets);
     expect(find.text('Plan'), findsOneWidget);
-    expect(find.text('Recent transactions'), findsOneWidget);
+    expect(find.text('Recent'), findsOneWidget);
 
     await tester.runAsync(() async {
       await tester.pumpWidget(const SizedBox.shrink());
